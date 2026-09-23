@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+# fractal — drive the fractal layout on the active Hyprland workspace.
+#
+#   fractal on|off|toggle     use / stop using the fractal layout on this workspace
+#   fractal show              tree as a desktop notification (bound to SUPER+CTRL+Y)
+#   fractal tree|status       show the tree with the viewport and focus marked
+#   fractal json              machine-readable status for widgets
+#   fractal <cmd> [args]      anything else goes to the layout: zoom-in, zoom-out,
+#                             zoom-root, back, forward, frame-save NAME, frame NAME,
+#                             split row|column|tabs, layout ..., move DIR, tab next,
+#                             grow, shrink, desktop on|off, reset, help
+set -euo pipefail
+
+STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/fractal-wm"
+RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/fractal-wm"
+LAYOUT="lua:${FRACTAL_LAYOUT_NAME:-fractal}"
+mkdir -p "$STATE_DIR" "$RUNTIME_DIR"
+
+if [[ -z "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]]; then
+  dir="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/hypr"
+  HYPRLAND_INSTANCE_SIGNATURE="$(ls -t "$dir" 2>/dev/null | head -1)"
+  export HYPRLAND_INSTANCE_SIGNATURE
+fi
+
+active_ws() { hyprctl activeworkspace -j | jq -r '.id'; }
+ws_layout() { hyprctl activeworkspace -j | jq -r '.tiledLayout'; }
+
+cmd="${1:-help}"
+shift || true
+
+case "$cmd" in
+  on)
+    ws="$(active_ws)"
+    hyprctl eval "hl.workspace_rule({ workspace = \"$ws\", layout = \"$LAYOUT\" })" >/dev/null
+    { grep -vx "$ws" "$STATE_DIR/enabled.txt" 2>/dev/null || true; echo "$ws"; } > "$STATE_DIR/enabled.txt.new"
+    mv "$STATE_DIR/enabled.txt.new" "$STATE_DIR/enabled.txt"
+    echo "workspace $ws -> $(ws_layout)"
+    ;;
+  off)
+    ws="$(active_ws)"
+    hyprctl eval "hl.workspace_rule({ workspace = \"$ws\", layout = \"dwindle\" })" >/dev/null
+    { grep -vx "$ws" "$STATE_DIR/enabled.txt" 2>/dev/null || true; } > "$STATE_DIR/enabled.txt.new"
+    mv "$STATE_DIR/enabled.txt.new" "$STATE_DIR/enabled.txt"
+    echo "workspace $ws -> $(ws_layout)"
+    ;;
+  toggle)
+    if [[ "$(ws_layout)" == "$LAYOUT" ]]; then exec "$0" off; else exec "$0" on; fi
+    ;;
+  show)
+    ws="$(active_ws)"
+    body="$(cat "$RUNTIME_DIR/ws-$ws.txt" 2>/dev/null || echo "no fractal state for workspace $ws")"
+    notify-send -a fractal -t 6000 "fractal · workspace $ws · $(ws_layout)" "$body"
+    ;;
+  tree|status)
+    ws="$(active_ws)"
+    if [[ "$(ws_layout)" != "$LAYOUT" ]]; then
+      echo "workspace $ws uses $(ws_layout), not $LAYOUT (run: fractal on)" >&2
+    fi
+    cat "$RUNTIME_DIR/ws-$ws.txt" 2>/dev/null || echo "no state yet for workspace $ws"
+    ;;
+  json)
+    cat "$RUNTIME_DIR/ws-$(active_ws).json" 2>/dev/null || echo '{}'
+    ;;
+  log)
+    tail -n "${1:-20}" "$STATE_DIR/fractal.log" 2>/dev/null || true
+    ;;
+  *)
+    if [[ "$(ws_layout)" != "$LAYOUT" ]]; then
+      echo "workspace $(active_ws) uses $(ws_layout), not $LAYOUT (run: fractal on)" >&2
+      exit 1
+    fi
+    msg="$cmd${*:+ $*}"
+    msg="${msg//\\/\\\\}"; msg="${msg//\"/\\\"}"
+    rm -f "$RUNTIME_DIR/last-reply.txt"
+    out="$(hyprctl dispatch "hl.dsp.layout(\"$msg\")" 2>&1 || true)"
+    if [[ -s "$RUNTIME_DIR/last-reply.txt" ]]; then
+      cat "$RUNTIME_DIR/last-reply.txt"
+    else
+      echo "$out"
+    fi
+    ;;
+esac

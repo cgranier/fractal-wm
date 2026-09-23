@@ -1,0 +1,15 @@
+# Notes on Hyprland's Lua custom-layout API (0.56.2)
+
+What the wiki did not say and the probes did. Useful for anyone writing a layout with `hl.layout.register`.
+
+- the layout is referenced as `lua:<name>`; `hl.workspace_rule({ workspace = "9", layout = "lua:fractal" })`;
+- `ctx.area` is the work area minus reserved bar and gaps_out; `target:place(box)` applies gaps_in/borders
+  itself; unplaced targets keep stale geometry, so hidden windows must be placed (offscreen) explicitly;
+- `HL.Window.hidden` is read-only; `hl.layout.register` refuses a duplicate name and Omarchy reloads keep the VM,
+  so register once and hot-swap; a string returned from `layout_msg` reaches `hyprctl` as an *error*, so replies
+  go through a file; `hyprctl repl '<lua>'` prints values, `hyprctl eval` does not; numbers arrive as floats
+  (`9.0`), normalise before using them as keys or file names; `hl.dsp.focus({ window = hl.get_window("address:0x…") })`
+  works, the bare selector string did not.
+
+Probing tips: `hyprctl repl '<lua>'` prints a return value, `hyprctl eval` only says `ok`; `/usr/share/hypr/stubs/hl.meta.lua`
+lists every `hl.*` field with types (but not argument shapes); `HL.Window.hidden` is read-only.
