@@ -248,6 +248,7 @@ local function detach(tree, node)
     end
   end)
   if tree.mask and mask_count(tree.mask) == 0 then tree.mask = nil end
+  if tree.mask and mask_count(tree.mask) >= #T.windows(tree.viewport) then tree.mask = nil end
   for k, v in pairs(tree.framings) do
     if dead[v.node] then tree.framings[k] = nil
     elseif v.mask then
