@@ -179,6 +179,10 @@ local function apply(tree, ctx)
   local area = ctx.area
   local boxes = T.layout(tree, area)
   local pw, ph = math.max(200, math.floor(area.w / 3)), math.max(150, math.floor(area.h / 3))
+  -- Remember each window's last visible box: a parked window keeps that size,
+  -- so its app does not reflow and the map's thumbnail still shows it as it was.
+  tree.last_box = tree.last_box or {}
+  for addr, b in pairs(boxes) do tree.last_box[addr] = { w = b.w, h = b.h } end
   local parked
   if M.park == "corner" then
     -- Hyprland only renders (and lets the shell capture) windows whose box
@@ -191,7 +195,7 @@ local function apply(tree, ctx)
     end
     local mx, my = area.x - 5, area.y - 31
     if mon then mx, my = mon.x, mon.y end
-    parked = { x = mx - pw + M.park_inset, y = my - ph + M.park_inset, w = pw, h = ph, raw = true }
+    parked = { mx = mx, my = my, w = pw, h = ph, raw = true }
   elseif M.park == "top" then
     parked = { x = area.x, y = area.y - ph - 2, w = pw, h = ph }
   elseif M.park == "sliver" then
@@ -209,7 +213,10 @@ local function apply(tree, ctx)
     else
       if w and w.address then now_parked[w.address] = true end
       if parked.raw then
-        t:set_box(parked) -- exact geometry, no gaps: the overlap must be precise
+        local last = w and tree.last_box[w.address] or nil
+        local bw, bh = (last and last.w) or parked.w, (last and last.h) or parked.h
+        -- exact geometry, no gaps: the corner overlap must be precise
+        t:set_box({ x = parked.mx - bw + M.park_inset, y = parked.my - bh + M.park_inset, w = bw, h = bh })
       else
         t:place(parked)
       end

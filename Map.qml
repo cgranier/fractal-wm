@@ -507,30 +507,62 @@ Item {
                   : (hovered ? Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.08) : "transparent")
                 border.width: picked ? Math.max(2, Style.space(2)) : (modelData.viewport ? Math.max(2, Style.space(2)) : (hovered ? 2 : 1))
                 border.color: (picked || modelData.viewport || hovered) ? root.accent : (shown ? Color.menu.border : root.faint)
-                opacity: shown ? 1.0 : 0.45
+                opacity: shown ? 1.0 : 0.8
 
-                // Live thumbnail of the window, under the labels
+                // Caption bar: name, title and state, like a title bar. Hidden
+                // tiles keep a readable caption; the thumbnail below is dimmed.
+                readonly property bool captioned: isWin && width > Style.space(70) && height > Style.space(48)
+                readonly property int captionH: captioned ? Style.space(20) : 0
+
+                Rectangle {
+                  id: caption
+                  visible: parent.captioned
+                  x: 1; y: 1
+                  width: parent.width - 2
+                  height: parent.captionH
+                  radius: Style.space(3)
+                  color: parent.picked ? Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.30)
+                       : modelData.focused ? root.selected
+                       : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, modelData.visible ? 0.08 : 0.04)
+                  Row {
+                    anchors { fill: parent; leftMargin: Style.space(6); rightMargin: Style.space(6) }
+                    spacing: Style.space(6)
+                    Text {
+                      anchors.verticalCenter: parent.verticalCenter
+                      text: modelData.isDesktop ? "desktop" : modelData.name
+                      color: modelData.visible ? root.foreground : root.dim
+                      font { family: root.fontFamily; pixelSize: Style.space(11); bold: true }
+                      elide: Text.ElideRight
+                      width: Math.min(implicitWidth, caption.width * 0.45)
+                    }
+                    Text {
+                      anchors.verticalCenter: parent.verticalCenter
+                      text: modelData.title !== modelData.name ? modelData.title : ""
+                      color: root.dim
+                      font { family: root.fontFamily; pixelSize: Style.space(10) }
+                      elide: Text.ElideMiddle
+                      width: Math.max(0, caption.width - Style.space(12) - x - stateTag.width - Style.space(12))
+                    }
+                  }
+                  Text {
+                    id: stateTag
+                    anchors { right: parent.right; rightMargin: Style.space(6); verticalCenter: parent.verticalCenter }
+                    text: parent.parent.picked ? "selected" : (!modelData.visible ? "hidden" : (modelData.focused ? "focused" : ""))
+                    color: parent.parent.picked ? root.accent : (!modelData.visible ? root.dim : root.selectedText)
+                    font { family: root.fontFamily; pixelSize: Style.space(9) }
+                  }
+                }
+
+                // Live thumbnail of the window, below the caption
                 ScreencopyView {
                   id: thumb
-                  visible: parent.isWin && captureSource !== null && hasContent && parent.width > Style.space(48) && parent.height > Style.space(32)
-                  anchors.fill: parent
+                  visible: parent.captioned && captureSource !== null && hasContent
+                  anchors { left: parent.left; right: parent.right; top: caption.bottom; bottom: parent.bottom }
                   anchors.margins: Style.space(3)
                   captureSource: parent.isWin ? root.toplevelFor(modelData.address) : null
                   live: root.opened && parent.isWin
                   paintCursor: false
-                  opacity: modelData.visible ? 0.85 : 0.4
-                }
-
-                // Label backdrop so text stays readable over a thumbnail
-                Rectangle {
-                  visible: thumb.visible
-                  anchors.centerIn: parent
-                  width: Math.min(parent.width - Style.space(8), Math.max(nameLabel.implicitWidth, titleLabel.visible ? titleLabel.implicitWidth : 0) + Style.space(16))
-                  height: nameLabel.implicitHeight + (titleLabel.visible ? titleLabel.implicitHeight + Style.space(6) : 0) + Style.space(10)
-                  radius: Style.space(5)
-                  color: Qt.rgba(root.background.r, root.background.g, root.background.b, 0.94)
-                  border.width: 1
-                  border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.12)
+                  opacity: modelData.visible ? 1.0 : 0.6
                 }
 
                 // Container tag, top-left inside the pad
@@ -542,40 +574,17 @@ Item {
                   font { family: root.fontFamily; pixelSize: Style.space(9) }
                 }
 
-                // Window label
+                // Small tiles (no caption): centred name only
                 Text {
-                  id: nameLabel
-                  visible: parent.isWin && parent.width > Style.space(14) && parent.height > Style.space(10)
+                  visible: parent.isWin && !parent.captioned && parent.width > Style.space(14) && parent.height > Style.space(10)
                   anchors.centerIn: parent
-                  anchors.verticalCenterOffset: titleLabel.visible ? -Style.space(7) : 0
                   width: parent.width - Style.space(6)
                   horizontalAlignment: Text.AlignHCenter
                   elide: Text.ElideRight
                   text: modelData.isDesktop ? "desktop" : Model.label(modelData, Math.max(3, Math.floor(parent.width / Math.max(6, font.pixelSize * 0.6))))
-                  color: modelData.focused ? root.selectedText : (modelData.inViewport ? root.foreground : root.dim)
-                  font { family: root.fontFamily; pixelSize: Model.fontFor(modelData, Style.space(9), Style.space(16)) }
+                  color: modelData.focused ? root.selectedText : (modelData.visible ? root.foreground : root.dim)
+                  font { family: root.fontFamily; pixelSize: Model.fontFor(modelData, Style.space(9), Style.space(14)) }
                 }
-
-                Text {
-                  id: titleLabel
-                  visible: parent.isWin && modelData.title !== "" && modelData.title !== modelData.name && parent.width > Style.space(90) && parent.height > Style.space(44)
-                  anchors { horizontalCenter: parent.horizontalCenter; top: parent.verticalCenter; topMargin: Style.space(6) }
-                  width: parent.width - Style.space(12)
-                  horizontalAlignment: Text.AlignHCenter
-                  elide: Text.ElideMiddle
-                  text: modelData.title
-                  color: root.dim
-                  font { family: root.fontFamily; pixelSize: Style.space(10) }
-                }
-
-                Text {
-                  visible: parent.isWin && (modelData.focused || !modelData.visible || parent.picked) && parent.width > Style.space(40) && parent.height > Style.space(28)
-                  anchors { right: parent.right; bottom: parent.bottom; margins: Style.space(4) }
-                  text: parent.picked ? "selected" : (!modelData.visible ? "hidden" : "focused")
-                  color: parent.picked ? root.accent : (!modelData.visible ? root.dim : root.selectedText)
-                  font { family: root.fontFamily; pixelSize: Style.space(9) }
-                }
-
               }
             }
 
