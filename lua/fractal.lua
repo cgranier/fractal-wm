@@ -183,6 +183,10 @@ local function apply(tree, ctx)
   -- so its app does not reflow and the map's thumbnail still shows it as it was.
   tree.last_box = tree.last_box or {}
   for addr, b in pairs(boxes) do tree.last_box[addr] = { w = b.w, h = b.h } end
+  -- forget closed windows (T.sync has already dropped them from the tree)
+  for addr in pairs(tree.last_box) do
+    if not T.find_window(tree, addr) then tree.last_box[addr] = nil end
+  end
   local parked
   if M.park == "corner" then
     -- Hyprland only renders (and lets the shell capture) windows whose box
@@ -196,10 +200,6 @@ local function apply(tree, ctx)
     local mx, my = area.x - 5, area.y - 31
     if mon then mx, my = mon.x, mon.y end
     parked = { mx = mx, my = my, w = pw, h = ph, raw = true }
-  elseif M.park == "top" then
-    parked = { x = area.x, y = area.y - ph - 2, w = pw, h = ph }
-  elseif M.park == "sliver" then
-    parked = { x = area.x + area.w - 8, y = area.y, w = pw, h = ph }
   else
     parked = { x = area.x + area.w + OFFSCREEN, y = area.y, w = pw, h = ph }
   end

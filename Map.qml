@@ -55,6 +55,7 @@ Item {
     try { payload = JSON.parse(payloadJson || "{}") } catch (e) { payload = ({}) }
     notice = ""
     hoverId = ""
+    cursorId = ""             // start on the focused window every time the map opens
     clearSelection()
     press = null
     dragging = false
@@ -559,8 +560,10 @@ Item {
                   visible: parent.captioned && captureSource !== null && hasContent
                   anchors { left: parent.left; right: parent.right; top: caption.bottom; bottom: parent.bottom }
                   anchors.margins: Style.space(3)
-                  captureSource: parent.isWin ? root.toplevelFor(modelData.address) : null
-                  live: root.opened && parent.isWin
+                  // Capture only when the thumbnail can actually show: small (uncaptioned)
+                  // tiles and "T" (thumbnails off) must not keep a live capture running.
+                  captureSource: (parent.captioned && root.thumbnails) ? root.toplevelFor(modelData.address) : null
+                  live: root.opened && parent.captioned && root.thumbnails
                   paintCursor: false
                   opacity: modelData.visible ? 1.0 : 0.6
                 }

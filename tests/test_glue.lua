@@ -212,8 +212,6 @@ test("show a c hides b and gives its space away; focusing b brings it back", fun
   for _, fn in ipairs(calls.timers) do fn() end
   assert(calls.dispatch[#calls.dispatch]:find("^tag:%+fractal%-parked:address:0xb"), "b tagged parked: " .. tostring(calls.dispatch[#calls.dispatch]))
   calls.timers = {}
-  for _, fn in ipairs(calls.timers) do fn() end
-  calls.timers = {}
   active_window = B                              -- user alt-tabs to the hidden b
   provider.recalculate(ctx)
   eq(fmt(ctx.placed["0xb"]), "600,0,600,400")
@@ -222,6 +220,20 @@ test("show a c hides b and gives its space away; focusing b brings it back", fun
   eq(fmt(ctx.placed["0xb"]), "0,0,1200,400")
   provider.layout_msg(ctx, "show-all")
   eq(fmt(ctx.placed["0xa"]), "0,0,600,800")
+end)
+
+test("last visible sizes are forgotten when windows close", function()
+  local D = win("0xd", "obsidian")
+  local ctx = ctx_for({ A, B, C, D })
+  active_window = A
+  provider.layout_msg(ctx, "reset")
+  provider.recalculate(ctx)
+  local tree = _G.__fractal.impl.trees["9"]
+  eq(tree.last_box["0xd"] ~= nil, true, "d remembered")
+  ctx = ctx_for({ A, B, C })                      -- d closed
+  provider.recalculate(ctx)
+  eq(tree.last_box["0xd"], nil, "d forgotten")
+  eq(tree.last_box["0xa"] ~= nil, true, "a still remembered")
 end)
 
 print(string.format("%d passed, %d failed", passed, failed))

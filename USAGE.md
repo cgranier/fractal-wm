@@ -10,7 +10,7 @@ keeps the Lua API keeps this working.
 | Path | Role |
 |---|---|
 | `lua/fractal_tree.lua` | pure tree model: nodes, viewport, zoom, history, framings, layout math, persistence (tested with `lua tests/test_tree.lua`) |
-| `lua/fractal.lua` | Hyprland glue: registers the layout, syncs the tree with live windows, parks hidden windows offscreen, handles commands, saves state |
+| `lua/fractal.lua` | Hyprland glue: registers the layout, syncs the tree with live windows, parks hidden windows transparent in the monitor corner, handles commands, saves state |
 | `lua/fractal_keys.lua` | example bindings; **copied** to `~/.config/hypr/fractal_keys.lua` (edit that copy) |
 | `bin/fractal` | CLI; symlinked to `~/.local/bin/fractal` |
 | `tests/test_tree.lua`, `tests/test_glue.lua` | 26 offline tests, run with the system `lua` (5.5) |
@@ -94,9 +94,11 @@ Hyprland restart (window addresses change), the tree is rebuilt from whatever wi
 - Hidden windows are parked transparent in a corner, not unmapped. `hl.dsp.focus({direction=...})` can reach them;
   the viewport then pulls back (or the selection grows) to show them, which is the intended fallback.
 - No mouse docking / drag to a side yet. `move` and `split` are the keyboard substitutes.
-- Zoom is a geometry change animated by Hyprland, not a camera zoom. A live-thumbnail map (layer B) would be a
-  Quickshell plugin reading `$XDG_RUNTIME_DIR/fractal-wm/ws-<id>.json`.
-- One tree per workspace, one workspace per monitor at a time; nothing multi-monitor specific has been tested.
+- Zoom is a geometry change animated by Hyprland, not a camera zoom. The Fractal Map overlay (docs/MAP.md) is the
+  bird's-eye view, with live thumbnails.
+- One tree per workspace, one workspace per monitor at a time. Multi-monitor is untested, and corner parking is
+  known to place hidden windows partly on a neighbouring monitor to the left or above.
+- Switching a workspace away from `lua:fractal` and back rebuilds its tree, so framings and selections on it are lost.
 
 ## Development
 

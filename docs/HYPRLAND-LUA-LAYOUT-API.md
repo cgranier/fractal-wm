@@ -4,7 +4,7 @@ What the wiki did not say and the probes did. Useful for anyone writing a layout
 
 - the layout is referenced as `lua:<name>`; `hl.workspace_rule({ workspace = "9", layout = "lua:fractal" })`;
 - `ctx.area` is the work area minus reserved bar and gaps_out; `target:place(box)` applies gaps_in/borders
-  itself; unplaced targets keep stale geometry, so hidden windows must be placed (offscreen) explicitly;
+  itself; unplaced targets keep stale geometry, so hidden windows must be placed somewhere explicitly (see below for where);
 - `HL.Window.hidden` is read-only; `hl.layout.register` refuses a duplicate name and Omarchy reloads keep the VM,
   so register once and hot-swap; a string returned from `layout_msg` reaches `hyprctl` as an *error*, so replies
   go through a file; `hyprctl repl '<lua>'` prints values, `hyprctl eval` does not; numbers arrive as floats
@@ -20,3 +20,4 @@ render, windows placed fully off-screen do not. To hide a window and keep it cap
 monitor by a few pixels and make it transparent with a tag + `hl.window_rule({ match = { tag = "…" }, opacity = "0 0 0" })`;
 tag with `hl.dsp.window.tag({ tag = "+name", window = win })`. `target:set_box()` still shaves about 5 px per side, and
 terminals snap to cell sizes, so leave a 12 px margin. `hyprctl setprop` is gone in the Lua era ("unknown request").
+Changing a workspace's layout away from a Lua layout clears tags set with `hl.dsp.window.tag` (observed on 0.56.2).

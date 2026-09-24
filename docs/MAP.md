@@ -64,7 +64,10 @@ Each tile shows a live thumbnail of its window (press T to toggle them) with the
 The layout writes `$XDG_RUNTIME_DIR/fractal-wm/ws-<id>.json` on every change. The overlay reads it (and watches it
 while open), checks the windows still exist with `hyprctl clients`, lays the tree out by weight in the monitor's
 aspect ratio, and sends picks through `hyprctl dispatch 'hl.dsp.layout("zoom <id>")'`, the same path the
-keybindings use. It runs no shell commands other than `hyprctl`.
+keybindings use. It runs no shell commands other than `hyprctl`. Thumbnails are live captures of each window through
+Hyprland's toplevel export (Quickshell `ScreencopyView`), only for tiles large enough to show them, and only while
+the map is open. The IPC target `cgranier.fractalmap` also exposes test hooks (`press`, `move`, `release`, `key`,
+`apply`, `selection`, `rects`, `debug`) used to drive the overlay without a pointer.
 
 `Model.js` is the pure part (parsing, pruning, layout); `node --test tests/model.test.js` covers it.
 

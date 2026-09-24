@@ -17,7 +17,7 @@ larger dimension, so the tree deepens on its own:
 Tilers shrink every window as you add more. Here the screen is a camera:
 zoom into the part you are working on, and the rest waits offscreen.
 
-- [ ] tile selection (pick which tiles a view shows)
-- [ ] live-thumbnail map with breadcrumb chips
+- [x] tile selection (pick which tiles a view shows)
+- [x] live-thumbnail map with breadcrumb chips
 - [x] dwindle-style insertion
 - [x] top-window zoom

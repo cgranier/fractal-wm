@@ -26,8 +26,9 @@ original feasibility assessment: [docs/CONCEPT.md](docs/CONCEPT.md).
 ## Status
 
 Early, usable prototype (September 2026). It runs daily on one machine. Expect rough edges and no tab bar.
-Roadmap, in order: selecting which tiles a view shows, then a live-thumbnail map with breadcrumb chips as an
-Omarchy shell widget. See [USAGE.md](USAGE.md) for the full command list and known limits.
+Done so far: dwindle-style insertion, top-window zoom, history and framings, selections (any set of tiles shown
+together), and the Fractal Map overlay with live thumbnails. Next: an install script, mouse docking, tab bars, and
+multi-monitor testing. See [USAGE.md](USAGE.md) for the full command list and known limits.
 
 ## Requirements
 
@@ -120,8 +121,10 @@ default bindings open it on Super+Ctrl+Y when the Omarchy shell is present. Deta
 
 `lua/fractal_tree.lua` is the pure model: nodes, viewport, zoom, history, framings, layout math, serialization. It has
 no Hyprland calls and is tested with plain Lua. `lua/fractal.lua` registers the layout with `hl.layout.register`,
-syncs the tree with the workspace's tiled windows on every recalculation, computes boxes for the viewport's subtree and
-parks everything else offscreen (Hyprland has no per-window hide from Lua). Commands travel through the
+syncs the tree with the workspace's tiled windows on every recalculation, computes boxes for the visible tiles and
+parks the rest in the monitor's top-left corner, a few pixels inside, at their last visible size and made fully
+transparent by a tag and window rule. Hyprland has no per-window hide from Lua, and it only renders windows that touch
+a monitor, which the map's live thumbnails need. Commands travel through the
 layout-message dispatcher, `hl.dsp.layout("zoom-in")`, so keys, `hyprctl dispatch` and the `fractal` tool all use the
 same path. State is saved per workspace under `$XDG_STATE_HOME/fractal-wm` and a rendered status under
 `$XDG_RUNTIME_DIR/fractal-wm` for tools and widgets. Notes on the API itself, including the traps:
