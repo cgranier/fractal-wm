@@ -308,7 +308,11 @@ function T.add_window(tree, address, label, area)
       if tree.viewport == target then tree.viewport = container end
     end
   end
-  if tree.mask then tree.mask[address] = true end
+  if tree.mask then
+    tree.mask[address] = true
+    -- a selection that now covers every tile under the viewport is no selection
+    if mask_count(tree.mask) >= #T.windows(tree.viewport) then tree.mask = nil end
+  end
   tree.focused = address
   return leaf
 end

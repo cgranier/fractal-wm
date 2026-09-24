@@ -39,6 +39,8 @@ case "$cmd" in
   off)
     ws="$(active_ws)"
     hyprctl eval "hl.workspace_rule({ workspace = \"$ws\", layout = \"dwindle\" })" >/dev/null
+    # parked windows were tagged transparent by the layout; make them visible again
+    hyprctl eval "for _, w in ipairs(hl.get_workspace_windows($ws)) do hl.dispatch(hl.dsp.window.tag({ tag = \"-fractal-parked\", window = w })) end" >/dev/null
     { grep -vx "$ws" "$STATE_DIR/enabled.txt" 2>/dev/null || true; } > "$STATE_DIR/enabled.txt.new"
     mv "$STATE_DIR/enabled.txt.new" "$STATE_DIR/enabled.txt"
     echo "workspace $ws -> $(ws_layout)"

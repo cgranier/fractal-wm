@@ -51,7 +51,9 @@ Zooming clears the selection; framings remember it; new windows and newly focuse
 The **viewport** is the node that fills the work area. **Zoom-in makes the focused window the top window**: the
 viewport moves to the largest subtree in which that window is the first leaf, i.e. the window plus everything
 that was split off from it; zooming again shows the window alone. Zoom-out climbs to the parent. Windows
-outside the viewport are parked 20000 px to the right (Hyprland has no per-window hide from Lua). Focusing a
+outside the viewport are parked in the monitor's top-left corner, one pixel inside and fully transparent (tag
+`fractal-parked` + an opacity rule): Hyprland only renders windows that touch a monitor, and the map's thumbnails need
+them rendered. Hyprland has no per-window hide from Lua. Focusing a
 parked window (alt-tab, urgent) pulls the viewport back to the nearest node that shows it.
 
 ## Commands
@@ -89,8 +91,8 @@ Hyprland restart (window addresses change), the tree is rebuilt from whatever wi
 ## Known limits (Phase 0)
 
 - No tab bar: `tabs` containers show only the active window; cycle with `tab next`.
-- Hidden windows are offscreen, not unmapped. `hl.dsp.focus({direction=...})` can reach them; the viewport
-  then pulls back to show them, which is the intended fallback.
+- Hidden windows are parked transparent in a corner, not unmapped. `hl.dsp.focus({direction=...})` can reach them;
+  the viewport then pulls back (or the selection grows) to show them, which is the intended fallback.
 - No mouse docking / drag to a side yet. `move` and `split` are the keyboard substitutes.
 - Zoom is a geometry change animated by Hyprland, not a camera zoom. A live-thumbnail map (layer B) would be a
   Quickshell plugin reading `$XDG_RUNTIME_DIR/fractal-wm/ws-<id>.json`.

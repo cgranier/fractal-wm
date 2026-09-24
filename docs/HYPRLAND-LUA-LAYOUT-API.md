@@ -13,3 +13,10 @@ What the wiki did not say and the probes did. Useful for anyone writing a layout
 
 Probing tips: `hyprctl repl '<lua>'` prints a return value, `hyprctl eval` only says `ok`; `/usr/share/hypr/stubs/hl.meta.lua`
 lists every `hl.*` field with types (but not argument shapes); `HL.Window.hidden` is read-only.
+
+Rendering and capture: Hyprland renders a window (and lets `hyprland-toplevel-export`, i.e. Quickshell's
+`ScreencopyView`, capture it) only while its box intersects its monitor; windows on an *inactive* workspace still
+render, windows placed fully off-screen do not. To hide a window and keep it capturable, park it overlapping the
+monitor by a few pixels and make it transparent with a tag + `hl.window_rule({ match = { tag = "…" }, opacity = "0 0 0" })`;
+tag with `hl.dsp.window.tag({ tag = "+name", window = win })`. `target:set_box()` still shaves about 5 px per side, and
+terminals snap to cell sizes, so leave a 12 px margin. `hyprctl setprop` is gone in the Lua era ("unknown request").

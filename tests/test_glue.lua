@@ -14,7 +14,9 @@ _G.hl = {
   timer = function(fn, opts) calls.timers[#calls.timers + 1] = fn return {} end,
   dispatch = function(d) calls.dispatch[#calls.dispatch + 1] = d end,
   exec_cmd = function() end,
-  dsp = { focus = function(t) return "focus:" .. tostring(t.window) end },
+  dsp = { focus = function(t) return "focus:" .. tostring(t.window) end,
+          window = { tag = function(t) return "tag:" .. tostring(t.tag) .. ":" .. tostring(t.window) end } },
+  window_rule = function(spec) calls.rules[#calls.rules + 1] = spec end,
   get_window = function(sel) return sel end,
   layout = { register = function(name, provider) calls.registered = { name = name, provider = provider } end },
   on = function(event, fn) calls.on = fn return { remove = function() end } end,
@@ -34,12 +36,13 @@ local function reply() return _G.__fractal.impl.last_reply end
 assert(calls.registered.name == "fractal", "registered under lua:fractal")
 local provider = calls.registered.provider
 
-local function win(addr, class) return { address = addr, class = class, title = class, workspace = { id = 9.0, name = "9" } } end
+local function win(addr, class) return { address = addr, class = class, title = class, workspace = { id = 9.0, name = "9" }, monitor = { x = 0, y = 0 } } end
 local function ctx_for(windows, area)
   local ctx = { area = area or { x = 0, y = 0, w = 1200, h = 800 }, targets = {}, placed = {} }
   for i, w in ipairs(windows) do
     local t = { index = i, window = w, box = { x = 0, y = 0, w = 0, h = 0 } }
     t.place = function(self, b) ctx.placed[w.address] = b end
+    t.set_box = function(self, b) ctx.placed[w.address] = b end
     ctx.targets[i] = t
   end
   ctx.column = function(self, i, n) return { x = (i - 1) * self.area.w / n, y = 0, w = self.area.w / n, h = self.area.h } end
@@ -85,7 +88,7 @@ test("zoom-in on b shows b as top window with d and c, parks a", function()
   eq(fmt(ctx.placed["0xb"]), "0,0,1200,200")
   eq(fmt(ctx.placed["0xd"]), "0,200,1200,200")
   eq(fmt(ctx.placed["0xc"]), "0,400,1200,400")
-  assert(ctx.placed["0xa"].x > 1200, "a parked offscreen")
+  assert(ctx.placed["0xa"].x < 0, "a parked in the corner")
 end)
 
 test("state survives a fresh module instance (reload)", function()
@@ -98,7 +101,7 @@ test("state survives a fresh module instance (reload)", function()
   local ctx = ctx_for({ A, B, C, D })
   calls.registered.provider.recalculate(ctx)
   eq(fmt(ctx.placed["0xb"]), "0,0,1200,200")
-  assert(ctx.placed["0xa"].x > 1200, "still zoomed after reload")
+  assert(ctx.placed["0xa"].x < 0, "still zoomed after reload")
   provider = calls.registered.provider
 end)
 
@@ -137,21 +140,38 @@ test("closing windows prunes and unknown commands return help", function()
 end)
 
 test("zooming schedules a focus change when focus leaves the view", function()
-  local before = #calls.timers
+  local function run_timers()
+    local fns = calls.timers
+    calls.timers = {}
+    for _, fn in ipairs(fns) do fn() end
+  end
+  local function focus_dispatches_since(n)
+    local out = {}
+    for i = n + 1, #calls.dispatch do
+      if tostring(calls.dispatch[i]):find("^focus:") then out[#out + 1] = calls.dispatch[i] end
+    end
+    return out
+  end
   local ctx = ctx_for({ A, B, C })
   active_window = A
   provider.recalculate(ctx)
+  run_timers()
+  local mark = #calls.dispatch
   provider.layout_msg(ctx, "zoom-in")            -- viewport = A, focus stays on A
-  eq(#calls.timers, before, "no focus change needed")
+  run_timers()
+  eq(#focus_dispatches_since(mark), 0, "no focus change needed")
   provider.layout_msg(ctx, "zoom-out")
   active_window = A
   provider.layout_msg(ctx, "move right")          -- a | (b/c) -> (b/c) | a
   provider.layout_msg(ctx, "zoom b")              -- unknown id -> error text, no crash
+  run_timers()
+  mark = #calls.dispatch
   local target = require("hypr.fractal_tree").find_window(_G.__fractal.impl.trees["9"], "0xc")
   provider.layout_msg(ctx, "zoom " .. target.id)   -- viewport = C; focus must move to C
-  eq(#calls.timers, before + 2, "focus scheduled (focus + grace-period timers)")
-  calls.timers[before + 1]()
-  eq(calls.dispatch[#calls.dispatch], "focus:address:0xc")
+  run_timers()
+  local focused = focus_dispatches_since(mark)
+  eq(#focused, 1, "one focus change scheduled")
+  eq(focused[1], "focus:address:0xc")
 end)
 
 test("a zoom survives focus briefly snapping back to the old window", function()
@@ -188,7 +208,10 @@ test("show a c hides b and gives its space away; focusing b brings it back", fun
   assert(tostring(reply()):find("1 hidden"), reply())
   eq(fmt(ctx.placed["0xa"]), "0,0,600,800")
   eq(fmt(ctx.placed["0xc"]), "600,0,600,800")   -- c takes b's share
-  assert(ctx.placed["0xb"].x > 1200, "b parked")
+  assert(ctx.placed["0xb"].x < 0, "b parked")
+  for _, fn in ipairs(calls.timers) do fn() end
+  assert(calls.dispatch[#calls.dispatch]:find("^tag:%+fractal%-parked:address:0xb"), "b tagged parked: " .. tostring(calls.dispatch[#calls.dispatch]))
+  calls.timers = {}
   for _, fn in ipairs(calls.timers) do fn() end
   calls.timers = {}
   active_window = B                              -- user alt-tabs to the hidden b

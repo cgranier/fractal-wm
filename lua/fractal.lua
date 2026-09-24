@@ -16,9 +16,9 @@ local T = require((type(modname) == "string" and modname or "hypr.fractal"):gsub
 local HOME = os.getenv("HOME") or ""
 local STATE_DIR = (os.getenv("XDG_STATE_HOME") or (HOME .. "/.local/state")) .. "/fractal-wm"
 local RUNTIME_DIR = (os.getenv("XDG_RUNTIME_DIR") or "/tmp") .. "/fractal-wm"
-local OFFSCREEN = 20000 -- hidden windows are parked this far right of the work area
+local OFFSCREEN = 20000 -- hidden windows are parked this far right of the work area (park = "offscreen")
 
-local M = { name = "fractal", trees = {}, desktop = false, state_dir = STATE_DIR, runtime_dir = RUNTIME_DIR }
+local M = { name = "fractal", trees = {}, desktop = false, park = "corner", park_inset = 12, state_dir = STATE_DIR, runtime_dir = RUNTIME_DIR }
 
 -- ------------------------------------------------------------------ files --
 
@@ -148,20 +148,74 @@ local function settle_focus(tree, address)
   end, { timeout = 400, type = "oneshot" })
 end
 
+-- Parked windows carry the tag "fractal-parked", which a window rule turns
+-- fully transparent: they must overlap the monitor for Hyprland to render them
+-- (thumbnails), but nothing of them may show. Tag changes are dispatched from
+-- a timer, never from inside the layout pass.
+M.TAG = "fractal-parked"
+
+local function retag(tree, now_parked, all_addresses)
+  local changes = {}
+  if tree.parked == nil then
+    -- First pass after a (re)load: nothing is known about existing tags, so
+    -- state every window's tag once instead of trusting a diff.
+    for a in pairs(all_addresses or now_parked) do changes[#changes + 1] = { a, now_parked[a] and "+" or "-" } end
+  else
+    for a in pairs(now_parked) do if not tree.parked[a] then changes[#changes + 1] = { a, "+" } end end
+    for a in pairs(tree.parked) do if not now_parked[a] then changes[#changes + 1] = { a, "-" } end end
+  end
+  tree.parked = now_parked
+  if #changes == 0 then return end
+  pcall(hl.timer, function()
+    for _, c in ipairs(changes) do
+      local win = hl.get_window("address:" .. c[1])
+      if win then pcall(hl.dispatch, hl.dsp.window.tag({ tag = c[2] .. M.TAG, window = win })) end
+    end
+  end, { timeout = 1, type = "oneshot" })
+end
+M.retag = retag
+
 local function apply(tree, ctx)
   local area = ctx.area
   local boxes = T.layout(tree, area)
-  local parked = {
-    x = area.x + area.w + OFFSCREEN,
-    y = area.y,
-    w = math.max(200, math.floor(area.w / 3)),
-    h = math.max(150, math.floor(area.h / 3)),
-  }
+  local pw, ph = math.max(200, math.floor(area.w / 3)), math.max(150, math.floor(area.h / 3))
+  local parked
+  if M.park == "corner" then
+    -- Hyprland only renders (and lets the shell capture) windows whose box
+    -- touches their monitor. Park hidden windows so that a single pixel of
+    -- content sits inside the monitor's top-left corner, under the bar:
+    -- thumbnails keep working and nothing readable shows on screen.
+    local mon = nil
+    for _, t in ipairs(ctx.targets) do
+      if t.window and t.window.monitor then mon = t.window.monitor break end
+    end
+    local mx, my = area.x - 5, area.y - 31
+    if mon then mx, my = mon.x, mon.y end
+    parked = { x = mx - pw + M.park_inset, y = my - ph + M.park_inset, w = pw, h = ph, raw = true }
+  elseif M.park == "top" then
+    parked = { x = area.x, y = area.y - ph - 2, w = pw, h = ph }
+  elseif M.park == "sliver" then
+    parked = { x = area.x + area.w - 8, y = area.y, w = pw, h = ph }
+  else
+    parked = { x = area.x + area.w + OFFSCREEN, y = area.y, w = pw, h = ph }
+  end
+  local now_parked, all = {}, {}
   for _, t in ipairs(ctx.targets) do
     local w = t.window
     local b = w and boxes[w.address] or nil
-    t:place(b or parked)
+    if w and w.address then all[w.address] = true end
+    if b then
+      t:place(b)
+    else
+      if w and w.address then now_parked[w.address] = true end
+      if parked.raw then
+        t:set_box(parked) -- exact geometry, no gaps: the overlap must be precise
+      else
+        t:place(parked)
+      end
+    end
   end
+  retag(tree, now_parked, all)
 end
 
 local function fallback(ctx)
@@ -369,6 +423,8 @@ function M.setup(opts)
   M.name = opts.name or "fractal"
   M.desktop = opts.desktop == true
   M.notify = opts.notify ~= false
+  M.park = opts.park or "corner"      -- corner (default) | offscreen
+  M.park_inset = opts.park_inset or 12  -- set_box shaves ~5 px per side and terminals snap to cells: keep a few px inside
   pcall(os.execute, string.format("mkdir -p %q %q", STATE_DIR, RUNTIME_DIR))
 
   -- Hyprland refuses to register a layout name twice and Omarchy reloads keep
@@ -391,6 +447,9 @@ function M.setup(opts)
       if tree and T.find_window(tree, w.address) then T.set_focus(tree, w.address) end
     end)
   end)
+
+  -- Parked windows are made invisible by this rule (see retag).
+  pcall(hl.window_rule, { name = "fractal-parked", match = { tag = M.TAG }, opacity = "0 0 0", no_shadow = true })
 
   -- Workspaces the CLI switched on (one id per line) come back after a reload.
   local enabled = read_file(STATE_DIR .. "/enabled.txt") or ""
