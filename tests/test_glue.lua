@@ -149,10 +149,32 @@ test("zooming schedules a focus change when focus leaves the view", function()
   provider.layout_msg(ctx, "zoom b")              -- unknown id -> error text, no crash
   local target = require("hypr.fractal_tree").find_window(_G.__fractal.impl.trees["9"], "0xc")
   provider.layout_msg(ctx, "zoom " .. target.id)   -- viewport = C; focus must move to C
-  eq(#calls.timers, before + 1, "focus scheduled")
-  calls.timers[#calls.timers]()
+  eq(#calls.timers, before + 2, "focus scheduled (focus + grace-period timers)")
+  calls.timers[before + 1]()
   eq(calls.dispatch[#calls.dispatch], "focus:address:0xc")
 end)
 
 print(string.format("%d passed, %d failed", passed, failed))
 os.exit(failed == 0 and 0 or 1)
+
+test("a zoom survives focus briefly snapping back to the old window", function()
+  local ctx = ctx_for({ A, B, C })
+  active_window = A
+  provider.recalculate(ctx)
+  provider.layout_msg(ctx, "zoom-root")
+  local tree = _G.__fractal.impl.trees["9"]
+  local T = require("hypr.fractal_tree")
+  local c = T.find_window(tree, "0xc")
+  provider.layout_msg(ctx, "zoom " .. c.id)          -- viewport = C, focus should settle on C
+  eq(tree.viewport, c)
+  -- an overlay closes and Hyprland hands focus back to A before C is focused
+  active_window = A
+  provider.recalculate(ctx)
+  eq(tree.viewport, c, "viewport must not be dragged back out during the grace period")
+  -- the grace period ends (the fake timer runs its callbacks)
+  for _, fn in ipairs(calls.timers) do fn() end
+  calls.timers = {}
+  active_window = A
+  provider.recalculate(ctx)
+  eq(tree.viewport, tree.root, "after the grace period a real focus change reveals the window")
+end)

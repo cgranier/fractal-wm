@@ -103,20 +103,47 @@ local function live_windows(ctx)
   return out
 end
 
+local function focus_later(address)
+  pcall(hl.timer, function()
+    local win = hl.get_window("address:" .. address)
+    if win then pcall(hl.dispatch, hl.dsp.focus({ window = win })) end
+  end, { timeout = 20, type = "oneshot" })
+end
+
 -- Track what Hyprland considers active. If the active window is in the tree
 -- but outside the viewport, pull the camera back to the nearest node that
 -- shows both, so keyboard focus never lands on an invisible window.
+--
+-- Exception: right after a zoom command, focus may still be settling (an
+-- overlay closing hands focus back to the previously active window, for
+-- instance). For a short grace period the intended window is re-focused
+-- instead of dragging the viewport back out.
 local function refresh_focus(tree)
   local ok, aw = pcall(hl.get_active_window)
   if not (ok and aw and aw.address) then return end
   local leaf = T.find_window(tree, aw.address)
   if not leaf then return end
+  if tree.pending_focus and tree.pending_focus ~= aw.address then
+    if T.find_window(tree, tree.pending_focus) then
+      focus_later(tree.pending_focus)
+      return
+    end
+    tree.pending_focus = nil
+  end
   T.set_focus(tree, aw.address)
   if not T.contains(tree.viewport, leaf) then
     local n = tree.viewport
     while n and not T.contains(n, leaf) do n = n.parent end
     if n then T.zoom_to(tree, n) end
   end
+end
+
+local function settle_focus(tree, address)
+  tree.pending_focus = address
+  focus_later(address)
+  pcall(hl.timer, function()
+    if tree.pending_focus == address then tree.pending_focus = nil end
+  end, { timeout = 400, type = "oneshot" })
 end
 
 local function apply(tree, ctx)
@@ -138,13 +165,6 @@ end
 local function fallback(ctx)
   local n = #ctx.targets
   for i, t in ipairs(ctx.targets) do t:place(ctx:column(i, n)) end
-end
-
-local function focus_later(address)
-  pcall(hl.timer, function()
-    local win = hl.get_window("address:" .. address)
-    if win then pcall(hl.dispatch, hl.dsp.focus({ window = win })) end
-  end, { timeout = 20, type = "oneshot" })
 end
 
 local function notify(text)
@@ -300,7 +320,7 @@ function M.layout_msg(ctx, msg)
     apply(tree, ctx)
     save(ws, tree)
     write_file(RUNTIME_DIR .. "/last-reply.txt", tostring(reply) .. "\n")
-    if tree.focused and tree.focused ~= before then focus_later(tree.focused) end
+    if tree.focused and tree.focused ~= before then settle_focus(tree, tree.focused) end
     if M.notify and reply and not reply:find("\n") then notify(reply) end
   end)
   if not ok then
