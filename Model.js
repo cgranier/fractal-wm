@@ -62,6 +62,7 @@ function flatten(status, box, opts) {
       depth: depth, x: b.x, y: b.y, w: Math.max(1, b.w), h: Math.max(1, b.h),
       isWindow: isWin, isDesktop: node.kind === "desktop",
       viewport: node.id === viewportId, focused: !!node.focused, framing: node.framing || "",
+      visible: node.visible !== false,
       parentId: idx.parentOf[node.id], inViewport: mine,
       children: (node.children || []).length
     }
@@ -156,4 +157,46 @@ function liveAddresses(clientsJson, workspaceId) {
     if (c && c.workspace && c.workspace.id === workspaceId && !c.floating) live[c.address] = true
   }
   return live
+}
+
+// Deepest rectangle under a point. Rects are listed parents-first, so the last
+// hit is the deepest; windows always win over the container around them.
+function hit(rects, x, y) {
+  var found = null
+  for (var i = 0; i < rects.length; i++) {
+    var r = rects[i]
+    if (x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h) found = r
+  }
+  return found
+}
+
+// Window rectangles intersecting a marquee box {x,y,w,h} (normalised or not).
+function windowsIn(rects, box) {
+  var x0 = Math.min(box.x, box.x + box.w), x1 = Math.max(box.x, box.x + box.w)
+  var y0 = Math.min(box.y, box.y + box.h), y1 = Math.max(box.y, box.y + box.h)
+  var out = []
+  for (var i = 0; i < rects.length; i++) {
+    var r = rects[i]
+    if (!r.isWindow) continue
+    if (r.x < x1 && r.x + r.w > x0 && r.y < y1 && r.y + r.h > y0) out.push(r.id)
+  }
+  return out
+}
+
+// Ids of the windows under a node (the node itself when it is a window).
+function windowsUnder(rects, id) {
+  var byId = {}
+  for (var i = 0; i < rects.length; i++) byId[rects[i].id] = rects[i]
+  var out = []
+  for (var j = 0; j < rects.length; j++) {
+    var r = rects[j]
+    if (!r.isWindow) continue
+    var n = r
+    while (n) { if (n.id === id) { out.push(r.id); break } n = n.parentId ? byId[n.parentId] : null }
+  }
+  return out
+}
+
+function normalise(box) {
+  return { x: Math.min(box.x, box.x + box.w), y: Math.min(box.y, box.y + box.h), w: Math.abs(box.w), h: Math.abs(box.h) }
 }

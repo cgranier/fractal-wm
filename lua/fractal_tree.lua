@@ -96,6 +96,42 @@ end
 T.first_window = first_window
 T.attach = add
 
+-- A view is the viewport plus an optional mask: a set of window addresses that
+-- are visible. With no mask every window under the viewport is visible.
+local function leaf_visible(tree, n)
+  if n.kind == "window" then return tree.mask == nil or tree.mask[n.address] == true end
+  if n.kind == "desktop" then return tree.mask == nil end
+  return false
+end
+
+local function has_visible(tree, n)
+  if not is_container(n) then return leaf_visible(tree, n) end
+  for _, c in ipairs(n.children) do
+    if has_visible(tree, c) then return true end
+  end
+  return false
+end
+
+function T.is_visible(tree, n)
+  return contains(tree.viewport, n) and leaf_visible(tree, n)
+end
+
+local function mask_count(mask)
+  local n = 0
+  for _ in pairs(mask or {}) do n = n + 1 end
+  return n
+end
+
+local function lca(nodes)
+  local node = nodes[1]
+  if not node then return nil end
+  for i = 2, #nodes do
+    while node and not contains(node, nodes[i]) do node = node.parent end
+  end
+  return node
+end
+
+
 function T.node(tree, kind, fields)
   local n = { kind = kind, id = new_id(tree), children = {}, weight = 1.0, active = 1 }
   for k, v in pairs(fields or {}) do n[k] = v end
@@ -137,7 +173,7 @@ end
 
 local function focused_in_view(tree)
   local f = focused_node(tree)
-  if in_viewport(tree, f) then return f end
+  if in_viewport(tree, f) and leaf_visible(tree, f) then return f end
 end
 
 function T.name(n)
@@ -149,7 +185,7 @@ end
 -- ------------------------------------------------------------------ tree --
 
 function T.new(opts)
-  local tree = { back = {}, forward = {}, framings = {}, focused = nil }
+  local tree = { back = {}, forward = {}, framings = {}, focused = nil, mask = nil }
   tree.root = T.node(tree, "row")
   if opts and opts.desktop then add(tree.root, T.node(tree, "desktop")) end
   tree.viewport = tree.root
@@ -164,14 +200,14 @@ local function collapse(tree, node)
     if #node.children == 0 then
       if tree.viewport == node then tree.viewport = parent end
       remove(parent, node)
-      for k, v in pairs(tree.framings) do if v == node.id then tree.framings[k] = nil end end
+      for k, v in pairs(tree.framings) do if v.node == node.id then tree.framings[k] = nil end end
       node = parent
     elseif #node.children == 1 then
       local only = node.children[1]
       remove(node, only)
       replace_with(node, only)
       if tree.viewport == node then tree.viewport = only end
-      for k, v in pairs(tree.framings) do if v == node.id then tree.framings[k] = only.id end end
+      for k, v in pairs(tree.framings) do if v.node == node.id then v.node = only.id end end
       node = parent
     else
       break
@@ -203,9 +239,21 @@ local function detach(tree, node)
   local f = focused_node(tree)
   local lost_focus = f ~= nil and contains(node, f)
   if contains(node, tree.viewport) then tree.viewport = parent end
-  local dead = {}
-  walk(node, function(n) dead[n.id] = true end)
-  for k, v in pairs(tree.framings) do if dead[v] then tree.framings[k] = nil end end
+  local dead, dead_addr = {}, {}
+  walk(node, function(n)
+    dead[n.id] = true
+    if n.kind == "window" then
+      dead_addr[n.address] = true
+      if tree.mask then tree.mask[n.address] = nil end
+    end
+  end)
+  if tree.mask and mask_count(tree.mask) == 0 then tree.mask = nil end
+  for k, v in pairs(tree.framings) do
+    if dead[v.node] then tree.framings[k] = nil
+    elseif v.mask then
+      for _, a in ipairs(v.mask) do if dead_addr[a] then v.mask = nil break end end
+    end
+  end
   collapse(tree, parent)
   if lost_focus or f == nil then
     local fw = first_window(tree.viewport)
@@ -260,6 +308,7 @@ function T.add_window(tree, address, label, area)
       if tree.viewport == target then tree.viewport = container end
     end
   end
+  if tree.mask then tree.mask[address] = true end
   tree.focused = address
   return leaf
 end
@@ -299,21 +348,71 @@ end
 
 -- ------------------------------------------------------- viewport (zoom) --
 
+local function mask_list(mask)
+  if not mask then return nil end
+  local out = {}
+  for a in pairs(mask) do out[#out + 1] = a end
+  table.sort(out)
+  return out
+end
+
+local function mask_set(list)
+  if not list then return nil end
+  local set = {}
+  for _, a in ipairs(list) do set[a] = true end
+  return set
+end
+
+local function view_entry(tree)
+  return { node = tree.viewport.id, mask = mask_list(tree.mask) }
+end
+
 local function push_history(tree)
-  tree.back[#tree.back + 1] = tree.viewport.id
+  tree.back[#tree.back + 1] = view_entry(tree)
   tree.forward = {}
   while #tree.back > HISTORY do table.remove(tree.back, 1) end
 end
 
-function T.zoom_to(tree, node, record)
-  if node ~= tree.viewport then
-    if record ~= false then push_history(tree) end
-    tree.viewport = node
+-- The first visible window a user would expect focused for the current view.
+local function first_visible(tree, n)
+  if n.kind == "window" then return leaf_visible(tree, n) and n or nil end
+  if not is_container(n) then return nil end
+  if n.kind == "tabs" then
+    local c = active_child(n)
+    local f = c and first_visible(tree, c)
+    if f then return f end
   end
+  for _, c in ipairs(n.children) do
+    local f = first_visible(tree, c)
+    if f then return f end
+  end
+end
+
+local function settle_focus(tree)
   if not focused_in_view(tree) then
-    local fw = first_window(node)
+    local fw = first_visible(tree, tree.viewport)
     tree.focused = fw and fw.address or tree.focused
   end
+end
+
+-- Set the whole view at once (viewport + mask). Used by history and framings.
+function T.set_view(tree, node, mask, record)
+  if record ~= false then push_history(tree) end
+  tree.viewport = node
+  tree.mask = mask
+  if tree.mask and mask_count(tree.mask) == 0 then tree.mask = nil end
+  settle_focus(tree)
+  return node
+end
+
+-- Zooming is a plain subtree view: it clears any selection.
+function T.zoom_to(tree, node, record)
+  if node ~= tree.viewport or tree.mask ~= nil then
+    if record ~= false then push_history(tree) end
+    tree.viewport = node
+    tree.mask = nil
+  end
+  settle_focus(tree)
   return node
 end
 
@@ -354,7 +453,11 @@ function T.zoom_step(tree)
 end
 
 function T.zoom_out(tree)
-  if not tree.viewport.parent then return nil end
+  if not tree.viewport.parent then
+    -- At the root a zoom-out still has one job: drop the selection.
+    if tree.mask then return T.zoom_to(tree, tree.viewport) end
+    return nil
+  end
   return T.zoom_to(tree, tree.viewport.parent)
 end
 
@@ -365,40 +468,143 @@ function T.zoom_desktop(tree)
   return d and T.zoom_to(tree, d) or nil
 end
 
+local function restore(tree, entry)
+  if type(entry) == "string" then entry = { node = entry } end
+  local node = entry and T.find(tree, entry.node)
+  if not node then return nil end
+  local mask = mask_set(entry.mask)
+  if mask then
+    for a in pairs(mask) do if not T.find_window(tree, a) then mask[a] = nil end end
+    if mask_count(mask) == 0 then mask = nil end
+  end
+  return node, mask
+end
+
 function T.back(tree)
   while #tree.back > 0 do
-    local node = T.find(tree, table.remove(tree.back))
+    local node, mask = restore(tree, table.remove(tree.back))
     if node then
-      tree.forward[#tree.forward + 1] = tree.viewport.id
-      return T.zoom_to(tree, node, false)
+      tree.forward[#tree.forward + 1] = view_entry(tree)
+      return T.set_view(tree, node, mask, false)
     end
   end
 end
 
 function T.forward(tree)
   while #tree.forward > 0 do
-    local node = T.find(tree, table.remove(tree.forward))
+    local node, mask = restore(tree, table.remove(tree.forward))
     if node then
-      tree.back[#tree.back + 1] = tree.viewport.id
-      return T.zoom_to(tree, node, false)
+      tree.back[#tree.back + 1] = view_entry(tree)
+      return T.set_view(tree, node, mask, false)
     end
   end
 end
 
 function T.save_framing(tree, name, node)
   node = node or tree.viewport
-  tree.framings[name] = node.id
+  tree.framings[name] = { node = node.id, mask = node == tree.viewport and mask_list(tree.mask) or nil }
   return node
 end
 
 function T.go_framing(tree, name)
-  local id = tree.framings[name]
-  local node = id and T.find(tree, id)
+  local node, mask = restore(tree, tree.framings[name])
   if not node then
     tree.framings[name] = nil
     return nil
   end
-  return T.zoom_to(tree, node)
+  return T.set_view(tree, node, mask)
+end
+
+-- ------------------------------------------------------------- selection --
+
+-- Resolve ids/addresses to window leaves (a container id means all windows under it).
+local function resolve_windows(tree, ids)
+  local out, seen = {}, {}
+  for _, id in ipairs(ids) do
+    local node = T.find(tree, id) or T.find_window(tree, id)
+    if node then
+      for _, w in ipairs(T.windows(node)) do
+        if not seen[w.address] then seen[w.address] = true out[#out + 1] = w end
+      end
+    end
+  end
+  return out
+end
+
+-- Show exactly these tiles: the viewport becomes their nearest common ancestor
+-- and everything else under it is hidden. One tile, or a set that covers the
+-- whole subtree, is just a zoom.
+function T.show(tree, ids)
+  local leaves = resolve_windows(tree, ids)
+  if #leaves == 0 then return nil end
+  local node = lca(leaves)
+  local all = T.windows(node)
+  push_history(tree)
+  tree.viewport = node
+  if #leaves >= #all then
+    tree.mask = nil
+  else
+    tree.mask = {}
+    for _, w in ipairs(leaves) do tree.mask[w.address] = true end
+  end
+  settle_focus(tree)
+  return node
+end
+
+-- Hide one tile from the current view (never the last visible one).
+function T.hide(tree, id)
+  local leaf = (id and (T.find_window(tree, id) or T.find(tree, id))) or focused_node(tree)
+  if not leaf or leaf.kind ~= "window" or not T.is_visible(tree, leaf) then return false end
+  local visible = {}
+  for _, w in ipairs(T.windows(tree.viewport)) do
+    if leaf_visible(tree, w) and w ~= leaf then visible[#visible + 1] = w end
+  end
+  if #visible == 0 then return false end
+  push_history(tree)
+  tree.mask = {}
+  for _, w in ipairs(visible) do tree.mask[w.address] = true end
+  settle_focus(tree)
+  return true
+end
+
+-- Bring a hidden tile back into the current view (growing the viewport if needed).
+function T.unhide(tree, id)
+  local leaf = T.find_window(tree, id) or T.find(tree, id)
+  if not leaf or leaf.kind ~= "window" then return false end
+  if T.is_visible(tree, leaf) then return true end
+  push_history(tree)
+  if not contains(tree.viewport, leaf) then
+    local node = tree.viewport
+    while node and not contains(node, leaf) do node = node.parent end
+    -- keep the previously visible set, then add the newcomer
+    local keep = {}
+    for _, w in ipairs(T.windows(tree.viewport)) do if leaf_visible(tree, w) then keep[w.address] = true end end
+    keep[leaf.address] = true
+    tree.viewport = node
+    tree.mask = keep
+  else
+    tree.mask = tree.mask or {}
+    tree.mask[leaf.address] = true
+  end
+  if mask_count(tree.mask) >= #T.windows(tree.viewport) then tree.mask = nil end
+  settle_focus(tree)
+  return true
+end
+
+function T.show_all(tree)
+  if tree.mask == nil then return false end
+  push_history(tree)
+  tree.mask = nil
+  settle_focus(tree)
+  return true
+end
+
+function T.hidden_windows(tree)
+  local out = {}
+  for _, w in ipairs(T.windows(tree.viewport)) do
+    if not leaf_visible(tree, w) then out[#out + 1] = w end
+  end
+  return out
 end
 
 -- ------------------------------------------------------- structure edits --
@@ -506,19 +712,26 @@ function T.layout(tree, area)
   local boxes = {}
   local function place(node, b)
     if node.kind == "window" and node.address then
-      boxes[node.address] = { x = b.x, y = b.y, w = b.w, h = b.h }
+      if leaf_visible(tree, node) then boxes[node.address] = { x = b.x, y = b.y, w = b.w, h = b.h } end
       return
     end
     if not is_container(node) or #node.children == 0 then return end
     if node.kind == "tabs" then
       local c = active_child(node)
+      if c and not has_visible(tree, c) then
+        for _, k in ipairs(node.children) do if has_visible(tree, k) then c = k break end end
+      end
       if c then place(c, b) end
       return
     end
+    local shown = {}
     local total = 0
-    for _, c in ipairs(node.children) do total = total + c.weight end
-    local offset = 0
     for _, c in ipairs(node.children) do
+      if has_visible(tree, c) then shown[#shown + 1] = c total = total + c.weight end
+    end
+    if #shown == 0 then return end
+    local offset = 0
+    for _, c in ipairs(shown) do
       local share = c.weight / total
       if node.kind == "row" then
         place(c, { x = b.x + offset * b.w, y = b.y, w = share * b.w, h = b.h })
@@ -550,15 +763,26 @@ local function ser_node(n, out)
   out[#out + 1] = "}"
 end
 
-local function ser_list(list)
+local function ser_strings(list)
   local parts = {}
-  for _, v in ipairs(list) do parts[#parts + 1] = string.format("%q", v) end
+  for _, v in ipairs(list or {}) do parts[#parts + 1] = string.format("%q", v) end
   return "{" .. table.concat(parts, ",") .. "}"
 end
 
-local function ser_map(map)
+local function ser_entry(e)
+  if type(e) == "string" then e = { node = e } end
+  return string.format("{node=%q,mask=%s}", e.node, e.mask and ser_strings(e.mask) or "nil")
+end
+
+local function ser_entries(list)
   local parts = {}
-  for k, v in pairs(map) do parts[#parts + 1] = string.format("[%q]=%q", k, v) end
+  for _, e in ipairs(list) do parts[#parts + 1] = ser_entry(e) end
+  return "{" .. table.concat(parts, ",") .. "}"
+end
+
+local function ser_framings(map)
+  local parts = {}
+  for k, v in pairs(map) do parts[#parts + 1] = string.format("[%q]=%s", k, ser_entry(v)) end
   table.sort(parts)
   return "{" .. table.concat(parts, ",") .. "}"
 end
@@ -566,10 +790,11 @@ end
 function T.serialize(tree)
   local out = { "return {root=" }
   ser_node(tree.root, out)
-  out[#out + 1] = string.format(",viewport=%q,focused=%s,back=%s,forward=%s,framings=%s}",
+  out[#out + 1] = string.format(",viewport=%q,focused=%s,mask=%s,back=%s,forward=%s,framings=%s}",
     tree.viewport.id,
     tree.focused and string.format("%q", tree.focused) or "nil",
-    ser_list(tree.back), ser_list(tree.forward), ser_map(tree.framings))
+    tree.mask and ser_strings(mask_list(tree.mask)) or "nil",
+    ser_entries(tree.back), ser_entries(tree.forward), ser_framings(tree.framings))
   return table.concat(out)
 end
 
@@ -588,9 +813,17 @@ function T.deserialize(text)
   if not fn then return nil, err end
   local ok, d = pcall(fn)
   if not ok or type(d) ~= "table" or type(d.root) ~= "table" then return nil, "bad state" end
-  local tree = { root = d.root, back = d.back or {}, forward = d.forward or {}, framings = d.framings or {}, focused = d.focused }
+  local tree = { root = d.root, back = d.back or {}, forward = d.forward or {}, framings = {}, focused = d.focused }
   link_parents(tree.root)
+  for k, v in pairs(d.framings or {}) do
+    tree.framings[k] = (type(v) == "string") and { node = v } or v
+  end
   tree.viewport = (d.viewport and T.find(tree, d.viewport)) or tree.root
+  tree.mask = mask_set(d.mask)
+  if tree.mask then
+    for a in pairs(tree.mask) do if not T.find_window(tree, a) then tree.mask[a] = nil end end
+    if mask_count(tree.mask) == 0 then tree.mask = nil end
+  end
   if tree.focused and not T.find_window(tree, tree.focused) then tree.focused = nil end
   return tree
 end
@@ -611,12 +844,13 @@ end
 function T.render(tree)
   local lines = {}
   local names = {}
-  for k, v in pairs(tree.framings) do names[v] = k end
+  for k, v in pairs(tree.framings) do names[v.node] = k end
   local f = focused_node(tree)
   local function rec(node, depth)
     local marks = ""
-    if node == tree.viewport then marks = marks .. " <== viewport" end
+    if node == tree.viewport then marks = marks .. " <== viewport" .. (tree.mask and " [selection]" or "") end
     if node == f then marks = marks .. " (focused)" end
+    if node.kind == "window" and contains(tree.viewport, node) and not leaf_visible(tree, node) then marks = marks .. " (hidden)" end
     if names[node.id] then marks = marks .. " [framing: " .. names[node.id] .. "]" end
     local extra = ""
     if node.kind == "tabs" then extra = " active=" .. tostring(node.active) end
@@ -643,6 +877,7 @@ local function json_node(n, tree, f, names)
     '"weight":' .. string.format("%.3f", n.weight),
     '"viewport":' .. tostring(n == tree.viewport),
     '"focused":' .. tostring(n == f),
+    '"visible":' .. tostring(T.is_visible(tree, n) or (is_container(n) and contains(tree.viewport, n) and has_visible(tree, n))),
   }
   if n.address then parts[#parts + 1] = '"address":' .. json_str(n.address) end
   if n.title then parts[#parts + 1] = '"title":' .. json_str(n.title) end
@@ -658,7 +893,7 @@ end
 
 function T.to_json(tree, extra)
   local names = {}
-  for k, v in pairs(tree.framings) do names[v] = k end
+  for k, v in pairs(tree.framings) do names[v.node] = k end
   local f = focused_node(tree)
   local path = {}
   for _, n in ipairs(T.path(tree)) do path[#path + 1] = '{"id":' .. json_str(n.id) .. ',"name":' .. json_str(T.name(n)) .. "}" end
@@ -666,9 +901,15 @@ function T.to_json(tree, extra)
   local keys = {}
   for k in pairs(tree.framings) do keys[#keys + 1] = k end
   table.sort(keys)
-  for _, k in ipairs(keys) do framings[#framings + 1] = '{"name":' .. json_str(k) .. ',"id":' .. json_str(tree.framings[k]) .. "}" end
+  for _, k in ipairs(keys) do
+    local fr = tree.framings[k]
+    framings[#framings + 1] = '{"name":' .. json_str(k) .. ',"id":' .. json_str(fr.node) .. ',"selection":' .. tostring(fr.mask ~= nil) .. "}"
+  end
+  local selection = {}
+  for _, a in ipairs(mask_list(tree.mask) or {}) do selection[#selection + 1] = json_str(a) end
   local parts = {
     '"viewport":' .. json_str(tree.viewport.id),
+    '"selection":[' .. table.concat(selection, ",") .. "]",
     '"path":[' .. table.concat(path, ",") .. "]",
     '"framings":[' .. table.concat(framings, ",") .. "]",
     '"canBack":' .. tostring(#tree.back > 0),

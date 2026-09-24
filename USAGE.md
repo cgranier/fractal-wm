@@ -43,6 +43,11 @@ Every tiled window on the workspace is a leaf; containers are `row`, `column` or
 newcomer on the right, a tall one a column with the newcomer below. Every insert adds a level, so the tree grows
 deep by itself: `a | (b / (c | (d / e)))`.
 
+A **view** is the viewport plus, optionally, a **selection**: the set of tiles that are visible. Without a selection
+every tile under the viewport shows. With one, the other tiles are parked and their space goes to their visible
+siblings, so `a | (x / (t | f))` with the selection {a, x} shows a and x side by side, x taking the whole right half.
+Zooming clears the selection; framings remember it; new windows and newly focused windows join it.
+
 The **viewport** is the node that fills the work area. **Zoom-in makes the focused window the top window**: the
 viewport moves to the largest subtree in which that window is the first leaf, i.e. the window plus everything
 that was split off from it; zooming again shows the window alone. Zoom-out climbs to the parent. Windows
@@ -62,7 +67,12 @@ Any of these works as `fractal <cmd>`, as `hyprctl dispatch 'hl.dsp.layout("<cmd
 | `zoom-root` | overview | SUPER+CTRL+SHIFT+UP |
 | `zoom-desktop` | the wallpaper leaf (only after `desktop on`) | SUPER+CTRL+SHIFT+DOWN |
 | `zoom <id\|address>` | jump to a node from `fractal tree` | |
-| `back` / `forward` | viewport history | SUPER+CTRL+SHIFT+LEFT / RIGHT |
+| `show <id> <id>...` | view exactly these tiles: viewport = their common ancestor, everything else under it hidden and its space given to the shown tiles | Fractal Map: shift-click or drag, then ⏎ |
+| `hide [id]` | drop one tile (default: the focused one) from the current view | SUPER+CTRL+J |
+| `unhide <id>` | bring a hidden tile back into the view | focus it (alt-tab) or click it in the map |
+| `show-all` | clear the selection | SUPER+CTRL+SHIFT+J |
+| `hidden` | list hidden tiles | |
+| `back` / `forward` | viewport history (selections included) | SUPER+CTRL+SHIFT+LEFT / RIGHT |
 | `frame-save <name>` / `frame <name>` / `frame-delete <name>` / `frames` | bookmarks to nodes | SUPER+CTRL+SHIFT+1..9 save, SUPER+CTRL+1..9 go |
 | `split row\|column\|tabs` | wrap the focused window; the next window opens inside | SUPER+CTRL+SHIFT+H / V / T |
 | `layout row\|column\|tabs\|next` | change the container around the focused window | SUPER+CTRL+SHIFT+L (next) |

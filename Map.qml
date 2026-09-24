@@ -26,6 +26,10 @@ Item {
   property string hoverId: ""
   property bool closeOnPick: true
   property string notice: ""
+  property var pickedIds: ({})         // window id -> true, the tiles picked for a "show"
+  property int selectedCount: 0
+  property bool dragging: false
+  property rect marquee: Qt.rect(0, 0, 0, 0)
 
   readonly property string pluginId: (manifest && manifest.id) || "cgranier.fractalmap"
   readonly property string runtimeDir: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/fractal-wm"
@@ -48,6 +52,9 @@ Item {
     try { payload = JSON.parse(payloadJson || "{}") } catch (e) { payload = ({}) }
     notice = ""
     hoverId = ""
+    clearSelection()
+    press = null
+    dragging = false
     clientsJson = ""
     if (payload.workspace !== undefined) {
       workspaceId = parseInt(payload.workspace)
@@ -81,6 +88,66 @@ Item {
     if (closeOnPick) dismiss()
   }
 
+  // ---- Selection: pick several tiles, then show exactly those ----------------
+  function clearSelection() { pickedIds = ({}); selectedCount = 0 }
+
+  function setSelected(ids, on) {
+    var next = ({})
+    for (var k in pickedIds) next[k] = true
+    for (var i = 0; i < ids.length; i++) { if (on) next[ids[i]] = true; else delete next[ids[i]] }
+    pickedIds = next
+    selectedCount = Object.keys(next).length
+  }
+
+  function toggleSelected(id) {
+    var ids = Model.windowsUnder(rects, id)
+    if (ids.length === 0) return
+    var allOn = ids.every(function(w) { return pickedIds[w] === true })
+    setSelected(ids, !allOn)
+  }
+
+  function applySelection() {
+    var ids = Object.keys(pickedIds)
+    if (ids.length === 0) return
+    layoutMsg("show " + ids.join(" "))
+    clearSelection()
+    if (closeOnPick) dismiss()
+  }
+
+  // Pointer handling, shared by the mouse layer and the IPC test hooks.
+  function pointerPress(x, y, button, shift) {
+    press = { x: x, y: y, button: button, shift: shift, id: (Model.hit(rects, x, y) || {}).id || "" }
+    dragging = false
+  }
+
+  function pointerMove(x, y) {
+    if (!press) { hoverId = (Model.hit(rects, x, y) || {}).id || ""; return }
+    if (!dragging && (Math.abs(x - press.x) > 6 || Math.abs(y - press.y) > 6) && press.button === Qt.LeftButton) dragging = true
+    if (dragging) marquee = Qt.rect(press.x, press.y, x - press.x, y - press.y)
+    hoverId = (Model.hit(rects, x, y) || {}).id || ""
+  }
+
+  function pointerRelease(x, y) {
+    if (!press) return
+    var p = press
+    press = null
+    if (dragging) {
+      dragging = false
+      var ids = Model.windowsIn(rects, { x: p.x, y: p.y, w: x - p.x, h: y - p.y })
+      if (!p.shift) clearSelection()
+      setSelected(ids, true)
+      marquee = Qt.rect(0, 0, 0, 0)
+      return
+    }
+    var id = (Model.hit(rects, x, y) || {}).id || p.id
+    if (!id) return
+    if (p.button === Qt.RightButton) { zoomTo(Model.parentId(status, id) || id); return }
+    if (p.shift) { toggleSelected(id); return }
+    if (selectedCount > 0) { toggleSelected(id); return }   // a selection is in progress: plain clicks add to it
+    zoomTo(id)
+  }
+  property var press: null
+
   function enableHere() {
     if (workspaceId < 0) return
     Quickshell.execDetached(["hyprctl", "eval",
@@ -111,7 +178,10 @@ Item {
   }
 
   function handleKey(event) {
-    if (event.key === Qt.Key_Escape) { dismiss(); return }
+    if (event.key === Qt.Key_Escape) { if (selectedCount > 0) clearSelection(); else dismiss(); return }
+    if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) { if (selectedCount > 0) applySelection(); else if (hoverId) zoomTo(hoverId); return }
+    if (event.key === Qt.Key_A && (event.modifiers & Qt.ControlModifier)) { setSelected(rects.filter(function(r) { return r.isWindow }).map(function(r) { return r.id }), true); return }
+    if (event.key === Qt.Key_Delete || event.key === Qt.Key_Backspace) { if (hoverId) { layoutMsg("hide " + hoverId) } return }
     if (event.key === Qt.Key_Up) { layoutMsg("zoom-out"); return }
     if (event.key === Qt.Key_Down) { layoutMsg("zoom-in"); return }
     if (event.key === Qt.Key_Home) { layoutMsg("zoom-root"); return }
@@ -128,6 +198,14 @@ Item {
     function workspace(): string { return String(root.workspaceId) }
     function rects(): string { return JSON.stringify(root.rects.map(function(r) { return { id: r.id, kind: r.kind, name: r.name, x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.w), h: Math.round(r.h), viewport: r.viewport, focused: r.focused } })) }
     function refresh(): string { root.refresh(); return "ok" }
+    // Test hooks: drive the pointer logic without a pointer (coordinates in map pixels).
+    function press(x: string, y: string, button: string, shift: string): string {
+      root.pointerPress(parseFloat(x), parseFloat(y), button === "right" ? Qt.RightButton : Qt.LeftButton, shift === "shift"); return "ok"
+    }
+    function move(x: string, y: string): string { root.pointerMove(parseFloat(x), parseFloat(y)); return root.hoverId }
+    function release(x: string, y: string): string { root.pointerRelease(parseFloat(x), parseFloat(y)); return JSON.stringify(Object.keys(root.pickedIds)) }
+    function apply(): string { root.applySelection(); return "ok" }
+    function selection(): string { return JSON.stringify(Object.keys(root.pickedIds)) }
     function debug(): string {
       var live = Model.liveAddresses(root.clientsJson, root.workspaceId)
       return JSON.stringify({ workspace: root.workspaceId, layout: root.workspaceLayout, clientsBytes: root.clientsJson.length,
@@ -283,6 +361,42 @@ Item {
 
           Item { width: Style.space(10); height: 1 }
 
+          Rectangle {
+            visible: root.selectedCount > 0
+            height: Style.space(26)
+            width: showLabel.implicitWidth + Style.space(20)
+            radius: Style.space(6)
+            color: showArea.containsMouse ? root.accent : Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.18)
+            border.width: 1
+            border.color: root.accent
+            Text {
+              id: showLabel
+              anchors.centerIn: parent
+              text: "Show " + root.selectedCount + (root.selectedCount === 1 ? " tile" : " tiles") + "  ⏎"
+              color: showArea.containsMouse ? root.background : root.accent
+              font { family: root.fontFamily; pixelSize: Style.space(13); bold: true }
+            }
+            MouseArea { id: showArea; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.applySelection() }
+          }
+
+          Rectangle {
+            visible: root.status && root.status.selection && root.status.selection.length > 0
+            height: Style.space(26)
+            width: allLabel.implicitWidth + Style.space(18)
+            radius: Style.space(6)
+            color: allArea.containsMouse ? root.faint : "transparent"
+            border.width: 1
+            border.color: Color.menu.border
+            Text {
+              id: allLabel
+              anchors.centerIn: parent
+              text: "show all"
+              color: root.foreground
+              font { family: root.fontFamily; pixelSize: Style.space(12) }
+            }
+            MouseArea { id: allArea; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: { root.layoutMsg("show-all"); if (root.closeOnPick) root.dismiss() } }
+          }
+
           Repeater {
             model: root.status ? root.status.framings : []
             delegate: Rectangle {
@@ -329,14 +443,18 @@ Item {
                 required property var modelData
                 readonly property bool hovered: root.hoverId === modelData.id
                 readonly property bool isWin: modelData.isWindow
+                readonly property bool picked: root.pickedIds[modelData.id] === true
+                readonly property bool shown: modelData.inViewport && modelData.visible
                 x: modelData.x; y: modelData.y; width: modelData.w; height: modelData.h
                 radius: isWin ? Style.space(4) : Style.space(6)
                 color: isWin
-                  ? (modelData.focused ? root.selected : (hovered ? root.faint : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, modelData.inViewport ? 0.05 : 0.02)))
+                  ? (picked ? Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.22)
+                     : modelData.focused ? root.selected
+                     : (hovered ? root.faint : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, shown ? 0.05 : 0.02)))
                   : (hovered ? Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.08) : "transparent")
-                border.width: modelData.viewport ? Math.max(2, Style.space(2)) : (hovered ? 2 : 1)
-                border.color: modelData.viewport ? root.accent : (hovered ? root.accent : (modelData.inViewport ? Color.menu.border : root.faint))
-                opacity: modelData.inViewport ? 1.0 : 0.55
+                border.width: picked ? Math.max(2, Style.space(2)) : (modelData.viewport ? Math.max(2, Style.space(2)) : (hovered ? 2 : 1))
+                border.color: (picked || modelData.viewport || hovered) ? root.accent : (shown ? Color.menu.border : root.faint)
+                opacity: shown ? 1.0 : 0.45
 
                 // Container tag, top-left inside the pad
                 Text {
@@ -371,26 +489,39 @@ Item {
                 }
 
                 Text {
-                  visible: parent.isWin && modelData.focused && parent.width > Style.space(40) && parent.height > Style.space(28)
+                  visible: parent.isWin && (modelData.focused || !modelData.visible || parent.picked) && parent.width > Style.space(40) && parent.height > Style.space(28)
                   anchors { right: parent.right; bottom: parent.bottom; margins: Style.space(4) }
-                  text: "focused"
-                  color: root.selectedText
+                  text: parent.picked ? "selected" : (!modelData.visible ? "hidden" : "focused")
+                  color: parent.picked ? root.accent : (!modelData.visible ? root.dim : root.selectedText)
                   font { family: root.fontFamily; pixelSize: Style.space(9) }
                 }
 
-                MouseArea {
-                  anchors.fill: parent
-                  hoverEnabled: true
-                  acceptedButtons: Qt.LeftButton | Qt.RightButton
-                  cursorShape: Qt.PointingHandCursor
-                  onEntered: root.hoverId = modelData.id
-                  onExited: if (root.hoverId === modelData.id) root.hoverId = modelData.parentId || ""
-                  onClicked: function(mouse) {
-                    if (mouse.button === Qt.RightButton) root.zoomTo(modelData.parentId || modelData.id)
-                    else root.zoomTo(modelData.id)
-                  }
-                }
               }
+            }
+
+            // One pointer layer over the whole map: hover, click, shift-click, drag.
+            MouseArea {
+              anchors.fill: parent
+              z: 10
+              hoverEnabled: true
+              acceptedButtons: Qt.LeftButton | Qt.RightButton
+              cursorShape: root.hoverId !== "" ? Qt.PointingHandCursor : Qt.ArrowCursor
+              onPressed: function(mouse) { root.pointerPress(mouse.x, mouse.y, mouse.button, (mouse.modifiers & Qt.ShiftModifier) !== 0) }
+              onPositionChanged: function(mouse) { root.pointerMove(mouse.x, mouse.y) }
+              onReleased: function(mouse) { root.pointerRelease(mouse.x, mouse.y) }
+              onExited: root.hoverId = ""
+            }
+
+            Rectangle {
+              visible: root.dragging
+              z: 9
+              x: Math.min(root.marquee.x, root.marquee.x + root.marquee.width)
+              y: Math.min(root.marquee.y, root.marquee.y + root.marquee.height)
+              width: Math.abs(root.marquee.width)
+              height: Math.abs(root.marquee.height)
+              color: Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.12)
+              border.width: 1
+              border.color: root.accent
             }
 
             // Empty / not-fractal states
@@ -442,7 +573,9 @@ Item {
           width: parent.width
           wrapMode: Text.WordWrap
           text: root.notice !== "" ? root.notice
-            : "click: zoom there  ·  right-click: zoom to its parent  ·  ↑ ↓ zoom out / in  ·  ← → back / forward  ·  Home: overview  ·  1–9: framings  ·  Esc: close"
+            : root.selectedCount > 0
+              ? (root.selectedCount + " selected  ·  click adds or removes tiles  ·  ⏎ or Show: view only these  ·  Esc: clear")
+              : "click: zoom there  ·  shift-click or drag: select tiles to show together  ·  right-click: zoom to its parent  ·  ↑ ↓ zoom out / in  ·  ← → back / forward  ·  Home: overview  ·  1–9: framings  ·  Esc: close"
           color: root.dim
           font { family: root.fontFamily; pixelSize: Style.space(11) }
         }

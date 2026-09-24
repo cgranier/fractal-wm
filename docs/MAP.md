@@ -41,14 +41,20 @@ o.bind("SUPER + CTRL + Y", "Fractal map", "omarchy-shell shell toggle cgranier.f
 | Input | Effect |
 |---|---|
 | click a window or container | zoom the viewport there, close the map |
+| shift-click, or drag a rectangle | select tiles; the Show button or ⏎ shows exactly those, from whatever branches |
+| click while a selection exists | add or remove that tile |
 | right-click | zoom to its parent |
+| Backspace / Delete | hide the hovered tile from the current view |
+| Ctrl+A | select every tile |
+| "show all" chip | clear the workspace's selection |
 | breadcrumb chip | zoom to that ancestor |
 | ⌖ chip | jump to a saved framing |
 | ↑ / ↓ | zoom out / in (map stays open and follows) |
 | ← / → | back / forward through viewports |
 | Home | overview |
 | 1–9 | saved framing 1–9 |
-| Esc, click outside | close |
+| Esc | clear the selection, then close |
+| click outside | close |
 
 `omarchy-shell shell toggle cgranier.fractalmap '{"workspace": 3}'` opens the map for another workspace.
 

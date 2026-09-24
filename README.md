@@ -6,8 +6,8 @@ A zoomable window tree for [Hyprland](https://hypr.land) 0.56+, written as a Lua
 Every window on a workspace is a leaf in one tree. A new window splits the focused tile along its larger dimension,
 dwindle style, so the tree grows deep on its own. The twist: the part of the tree that fills your screen, the
 **viewport**, is not welded to the root. Zoom in and the focused window becomes the top of the view, with everything
-that was split off from it; zoom in again and it fills the screen alone. Zoom out and the parent comes back. Save a
-view as a named framing and jump to it later. The screen becomes a camera over a tree that can grow as deep as you
+that was split off from it; zoom in again and it fills the screen alone. Zoom out and the parent comes back. Pick any set of
+tiles to show together, whatever branch they came from. Save a view as a named framing and jump to it later. The screen becomes a camera over a tree that can grow as deep as you
 like.
 
 The idea comes from Dan Fessler's 2026 post *"What happens when you make your Operating System fractal?"*, itself
@@ -102,6 +102,7 @@ dwindle. Uninstall: remove the `require` line, the three links and the copied fi
 | Super+Ctrl+Shift+H / V / T | force the next split to be a row / column / tabs |
 | Super+Ctrl+Shift+L | cycle the container kind around the focused window |
 | Super+Ctrl+G, Super+Ctrl+Alt+G | next / previous tab |
+| Super+Ctrl+J, Super+Ctrl+Shift+J | hide the focused tile from the view / show all again |
 | Super+Ctrl+Equal / Minus | grow / shrink |
 | Super+Ctrl+U | toggle the layout on this workspace |
 | Super+Ctrl+Y | Fractal Map overlay (Omarchy shell), else the tree as a notification |

@@ -11,6 +11,7 @@
 --   SUPER + CTRL + SHIFT + H / V / T    split: next window opens in a row / column / tabs
 --   SUPER + CTRL + SHIFT + L            cycle the container kind around the focused window
 --   SUPER + CTRL + G  /  + ALT + G      next / previous tab
+--   SUPER + CTRL + J  /  + SHIFT + J     hide the focused tile from the view / show all again
 --   SUPER + CTRL + EQUAL / MINUS        grow / shrink the focused window's share
 --   SUPER + CTRL + 1..9                 jump to saved framing 1..9
 --   SUPER + CTRL + SHIFT + 1..9         save the current view as framing 1..9
@@ -55,6 +56,8 @@ bind("SUPER + CTRL + SHIFT + T", "Fractal: split tabs", cmd("split tabs"))
 bind("SUPER + CTRL + SHIFT + L", "Fractal: cycle container kind", cmd("layout next"))
 bind("SUPER + CTRL + G", "Fractal: next tab", cmd("tab next"))
 bind("SUPER + CTRL + ALT + G", "Fractal: previous tab", cmd("tab prev"))
+bind("SUPER + CTRL + J", "Fractal: hide this tile from the view", cmd("hide"))
+bind("SUPER + CTRL + SHIFT + J", "Fractal: show all tiles again", cmd("show-all"))
 bind("SUPER + CTRL + EQUAL", "Fractal: grow window", cmd("grow"))
 bind("SUPER + CTRL + MINUS", "Fractal: shrink window", cmd("shrink"))
 

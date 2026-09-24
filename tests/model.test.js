@@ -7,7 +7,7 @@ const vm = require("node:vm")
 // Model.js is a QML JS library (.pragma library); evaluate it in a sandbox.
 const src = fs.readFileSync(path.join(__dirname, "..", "Model.js"), "utf8").replace(/^\.pragma library\s*$/m, "")
 const ctx = {}
-vm.runInNewContext(src + "\nthis.M = { parseStatus, flatten, parentId, nodeById, fitBox, label, fontFor, firstWindow, prune, liveAddresses }", ctx)
+vm.runInNewContext(src + "\nthis.M = { parseStatus, flatten, parentId, nodeById, fitBox, label, fontFor, firstWindow, prune, liveAddresses, hit, windowsIn, windowsUnder, normalise }", ctx)
 const M = ctx.M
 const fixture = fs.readFileSync(path.join(__dirname, "fixture.json"), "utf8")
 
@@ -98,4 +98,38 @@ test("liveAddresses keeps tiled windows of one workspace", () => {
   ])
   assert.deepEqual(JSON.parse(JSON.stringify(M.liveAddresses(clients, 9))), { "0x1": true })
   assert.deepEqual(JSON.parse(JSON.stringify(M.liveAddresses("garbage", 9))), {})
+})
+
+test("hit returns the deepest rect, windows over containers", () => {
+  const s = M.parseStatus(fixture)
+  const rects = M.flatten(s, { x: 0, y: 0, w: 1000, h: 600 }, { pad: 10, gap: 4 })
+  assert.equal(M.hit(rects, 200, 300).id, "w1")
+  assert.equal(M.hit(rects, 5, 5).id, "root")            // in the root's padding
+  assert.equal(M.hit(rects, 505, 100).id, "c0")           // in c0 padding, left edge
+  assert.equal(M.hit(rects, -5, 5), null)
+})
+
+test("windowsIn collects windows touching a marquee, in any drag direction", () => {
+  const s = M.parseStatus(fixture)
+  const rects = M.flatten(s, { x: 0, y: 0, w: 1000, h: 600 }, { pad: 0, gap: 0 })
+  assert.deepEqual(JSON.parse(JSON.stringify(M.windowsIn(rects, { x: 100, y: 100, w: 600, h: 100 }).sort())), ["w1", "w2"])
+  assert.deepEqual(JSON.parse(JSON.stringify(M.windowsIn(rects, { x: 700, y: 200, w: -600, h: -100 }).sort())), ["w1", "w2"])
+  assert.deepEqual(JSON.parse(JSON.stringify(M.windowsIn(rects, { x: 990, y: 590, w: 5, h: 5 }))), ["w5"])
+})
+
+test("windowsUnder resolves containers to their windows", () => {
+  const s = M.parseStatus(fixture)
+  const rects = M.flatten(s, { x: 0, y: 0, w: 1000, h: 600 })
+  assert.deepEqual(JSON.parse(JSON.stringify(M.windowsUnder(rects, "t1").sort())), ["w4", "w5"])
+  assert.deepEqual(JSON.parse(JSON.stringify(M.windowsUnder(rects, "w1"))), ["w1"])
+  assert.deepEqual(JSON.parse(JSON.stringify(M.normalise({ x: 10, y: 10, w: -4, h: -6 }))), { x: 6, y: 4, w: 4, h: 6 })
+})
+
+test("visible flag comes from the status, defaulting to true", () => {
+  const s = M.parseStatus(fixture)
+  s.tree.children[0].visible = false
+  const rects = M.flatten(s, { x: 0, y: 0, w: 1000, h: 600 })
+  const by = Object.fromEntries(rects.map(r => [r.id, r]))
+  assert.equal(by.w1.visible, false)
+  assert.equal(by.w2.visible, true)
 })

@@ -176,5 +176,30 @@ test("a zoom survives focus briefly snapping back to the old window", function()
   eq(tree.viewport, tree.root, "after the grace period a real focus change reveals the window")
 end)
 
+
+test("show a c hides b and gives its space away; focusing b brings it back", function()
+  local ctx = ctx_for({ A, B, C })
+  active_window = A
+  provider.layout_msg(ctx, "reset")             -- fresh tree: a | (b / c)
+  provider.recalculate(ctx)
+  local T = require("hypr.fractal_tree")
+  local tree = _G.__fractal.impl.trees["9"]
+  provider.layout_msg(ctx, "show " .. T.find_window(tree, "0xa").id .. " 0xc")
+  assert(tostring(reply()):find("1 hidden"), reply())
+  eq(fmt(ctx.placed["0xa"]), "0,0,600,800")
+  eq(fmt(ctx.placed["0xc"]), "600,0,600,800")   -- c takes b's share
+  assert(ctx.placed["0xb"].x > 1200, "b parked")
+  for _, fn in ipairs(calls.timers) do fn() end
+  calls.timers = {}
+  active_window = B                              -- user alt-tabs to the hidden b
+  provider.recalculate(ctx)
+  eq(fmt(ctx.placed["0xb"]), "600,0,600,400")
+  eq(fmt(ctx.placed["0xc"]), "600,400,600,400")
+  provider.layout_msg(ctx, "hide 0xa")
+  eq(fmt(ctx.placed["0xb"]), "0,0,1200,400")
+  provider.layout_msg(ctx, "show-all")
+  eq(fmt(ctx.placed["0xa"]), "0,0,600,800")
+end)
+
 print(string.format("%d passed, %d failed", passed, failed))
 os.exit(failed == 0 and 0 or 1)

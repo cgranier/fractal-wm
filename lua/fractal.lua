@@ -135,6 +135,8 @@ local function refresh_focus(tree)
     local n = tree.viewport
     while n and not T.contains(n, leaf) do n = n.parent end
     if n then T.zoom_to(tree, n) end
+  elseif not T.is_visible(tree, leaf) then
+    T.unhide(tree, leaf.address) -- hidden by a selection: bring it into the view
   end
 end
 
@@ -179,15 +181,24 @@ local DIRS = { left = "left", right = "right", up = "up", down = "down", l = "le
 local function where(tree)
   local parts = {}
   for _, n in ipairs(T.path(tree)) do parts[#parts + 1] = T.name(n) end
-  return "viewport: " .. table.concat(parts, " > ") .. string.format("  (%s, depth %d)", tree.viewport.id, #parts - 1)
+  local sel = ""
+  if tree.mask then
+    local shown, hidden = 0, #T.hidden_windows(tree)
+    for _ in pairs(tree.mask) do shown = shown + 1 end
+    sel = string.format("  [%d shown, %d hidden]", shown, hidden)
+  end
+  return "viewport: " .. table.concat(parts, " > ") .. string.format("  (%s, depth %d)%s", tree.viewport.id, #parts - 1, sel)
 end
 
 local HELP = [[
 fractal layout commands (hl.dsp.layout("<cmd>") / fractal <cmd>):
   zoom-in (focused window becomes the top of the view) | zoom-step (one level) | zoom-out
   zoom-root | zoom-desktop | zoom <node-id|address>
+  show <id> <id>...          view exactly these tiles (viewport = their common ancestor, rest hidden)
+  hide [id] | unhide <id>    drop / bring back one tile in the current view
+  show-all | hidden          clear the selection / list hidden tiles
   back | forward
-  frame-save <name> | frame <name> | frame-delete <name> | frames
+  frame-save <name> | frame <name> | frame-delete <name> | frames   (framings keep selections)
   split row|column|tabs      wrap the focused window so the next one opens beside it
   layout row|column|tabs|next  change the container around the focused window
   move left|right|up|down    move the focused window, i3-style
@@ -220,6 +231,23 @@ local function handle(tree, msg)
     if not node then return "no such node: " .. tostring(arg) end
     T.zoom_to(tree, node)
     return where(tree)
+  elseif cmd == "show" then
+    if #words < 2 then return "usage: show <id|address> [more...]" end
+    local ids = {}
+    for i = 2, #words do ids[#ids + 1] = words[i] end
+    return T.show(tree, ids) and where(tree) or "no such tiles"
+  elseif cmd == "hide" then
+    return T.hide(tree, arg) and where(tree) or "can't hide that (last visible tile, or not in view)"
+  elseif cmd == "unhide" then
+    if not arg then return "usage: unhide <id|address>" end
+    return T.unhide(tree, arg) and where(tree) or "no such tile"
+  elseif cmd == "show-all" then
+    T.show_all(tree)
+    return where(tree)
+  elseif cmd == "hidden" then
+    local names = {}
+    for _, w in ipairs(T.hidden_windows(tree)) do names[#names + 1] = w.id .. " " .. T.name(w) end
+    return #names > 0 and ("hidden: " .. table.concat(names, ", ")) or "nothing hidden"
   elseif cmd == "back" then
     return T.back(tree) and where(tree) or "no history"
   elseif cmd == "forward" then
