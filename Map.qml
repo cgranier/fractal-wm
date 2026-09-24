@@ -1,6 +1,7 @@
 import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
+import Quickshell.Hyprland
 import QtQuick
 import qs.Commons
 import qs.Ui
@@ -23,7 +24,9 @@ Item {
   property string workspaceLayout: ""
   property var status: null            // parsed ws-<id>.json, or null
   property var rects: []
-  property string hoverId: ""
+  property string hoverId: ""          // what the pointer is over
+  property string cursorId: ""         // keyboard cursor; follows the pointer, moves with arrows
+  property bool thumbnails: true
   property bool closeOnPick: true
   property string notice: ""
   property var pickedIds: ({})         // window id -> true, the tiles picked for a "show"
@@ -121,7 +124,7 @@ Item {
   }
 
   function pointerMove(x, y) {
-    if (!press) { hoverId = (Model.hit(rects, x, y) || {}).id || ""; return }
+    if (!press) { hoverId = (Model.hit(rects, x, y) || {}).id || ""; if (hoverId) cursorId = hoverId; return }
     if (!dragging && (Math.abs(x - press.x) > 6 || Math.abs(y - press.y) > 6) && press.button === Qt.LeftButton) dragging = true
     if (dragging) marquee = Qt.rect(press.x, press.y, x - press.x, y - press.y)
     hoverId = (Model.hit(rects, x, y) || {}).id || ""
@@ -175,20 +178,54 @@ Item {
     if (!status) { rects = []; return }
     rects = Model.flatten(status, { x: 0, y: 0, w: mapArea.width, h: mapArea.height },
       { pad: Style.space(6), gap: Style.space(3) })
+    var stillThere = rects.some(function(r) { return r.id === cursorId })
+    if (!stillThere) {
+      var focused = rects.filter(function(r) { return r.isWindow && r.focused })[0]
+      var anyWin = rects.filter(function(r) { return r.isWindow })[0]
+      cursorId = focused ? focused.id : (anyWin ? anyWin.id : "")
+    }
   }
 
-  function handleKey(event) {
-    if (event.key === Qt.Key_Escape) { if (selectedCount > 0) clearSelection(); else dismiss(); return }
-    if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) { if (selectedCount > 0) applySelection(); else if (hoverId) zoomTo(hoverId); return }
-    if (event.key === Qt.Key_A && (event.modifiers & Qt.ControlModifier)) { setSelected(rects.filter(function(r) { return r.isWindow }).map(function(r) { return r.id }), true); return }
-    if (event.key === Qt.Key_Delete || event.key === Qt.Key_Backspace) { if (hoverId) { layoutMsg("hide " + hoverId) } return }
-    if (event.key === Qt.Key_Up) { layoutMsg("zoom-out"); return }
-    if (event.key === Qt.Key_Down) { layoutMsg("zoom-in"); return }
-    if (event.key === Qt.Key_Home) { layoutMsg("zoom-root"); return }
-    if (event.key === Qt.Key_Left) { layoutMsg("back"); return }
-    if (event.key === Qt.Key_Right) { layoutMsg("forward"); return }
-    if (event.key >= Qt.Key_1 && event.key <= Qt.Key_9) { layoutMsg("frame " + (event.key - Qt.Key_0)); return }
-    if (event.key === Qt.Key_R) { refresh(); return }
+  // Live thumbnail source for a window, by Hyprland address (either spelling).
+  function toplevelFor(address) {
+    if (!thumbnails || !address) return null
+    var want = String(address).replace(/^0x/, "").toLowerCase()
+    var list = []
+    try { list = Hyprland.toplevels.values } catch (e) { return null }
+    for (var i = 0; i < list.length; i++) {
+      var t = list[i]
+      var have = String(t.address || "").replace(/^0x/, "").toLowerCase()
+      if (have === want) return t.wayland || null
+    }
+    return null
+  }
+
+  function moveCursor(dir) {
+    var next = Model.neighbor(rects, cursorId, dir)
+    if (next) cursorId = next
+  }
+
+  function handleKey(event) { handleKeyCode(event.key, event.modifiers) }
+
+  function handleKeyCode(key, modifiers) {
+    var shift = (modifiers & Qt.ShiftModifier) !== 0
+    var ctrl = (modifiers & Qt.ControlModifier) !== 0
+    if (key === Qt.Key_Escape) { if (selectedCount > 0) clearSelection(); else dismiss(); return }
+    if (key === Qt.Key_Return || key === Qt.Key_Enter) { if (selectedCount > 0) applySelection(); else if (cursorId) zoomTo(cursorId); return }
+    if (key === Qt.Key_Space) { if (cursorId) toggleSelected(cursorId); return }
+    if (key === Qt.Key_Delete || key === Qt.Key_Backspace) { if (cursorId) layoutMsg("hide " + cursorId); return }
+    if (key === Qt.Key_Home) { layoutMsg("zoom-root"); return }
+    if (key === Qt.Key_A && ctrl) { setSelected(rects.filter(function(r) { return r.isWindow }).map(function(r) { return r.id }), true); return }
+    if (key >= Qt.Key_1 && key <= Qt.Key_9) { layoutMsg("frame " + (key - Qt.Key_0)); return }
+    if (key === Qt.Key_R) { refresh(); return }
+    if (key === Qt.Key_T) { thumbnails = !thumbnails; return }
+    // Arrows move the cursor between tiles; with Shift they drive the live view.
+    if (key === Qt.Key_Left)  { if (shift) layoutMsg("back");     else moveCursor("left");  return }
+    if (key === Qt.Key_Right) { if (shift) layoutMsg("forward");  else moveCursor("right"); return }
+    if (key === Qt.Key_Up)    { if (shift) layoutMsg("zoom-out"); else moveCursor("up");    return }
+    if (key === Qt.Key_Down)  { if (shift) layoutMsg("zoom-in");  else moveCursor("down");  return }
+    if (key === Qt.Key_Minus) { layoutMsg("zoom-out"); return }
+    if (key === Qt.Key_Equal || key === Qt.Key_Plus) { layoutMsg("zoom-in"); return }
   }
 
   // ---- Wiring -------------------------------------------------------------
@@ -206,6 +243,22 @@ Item {
     function release(x: string, y: string): string { root.pointerRelease(parseFloat(x), parseFloat(y)); return JSON.stringify(Object.keys(root.pickedIds)) }
     function apply(): string { root.applySelection(); return "ok" }
     function selection(): string { return JSON.stringify(Object.keys(root.pickedIds)) }
+    function key(name: string, mods: string): string {
+      var keys = { left: Qt.Key_Left, right: Qt.Key_Right, up: Qt.Key_Up, down: Qt.Key_Down, enter: Qt.Key_Return, space: Qt.Key_Space,
+        escape: Qt.Key_Escape, home: Qt.Key_Home, backspace: Qt.Key_Backspace, a: Qt.Key_A, t: Qt.Key_T, minus: Qt.Key_Minus, equal: Qt.Key_Equal }
+      var m = 0
+      if ((mods || "").indexOf("shift") >= 0) m |= Qt.ShiftModifier
+      if ((mods || "").indexOf("ctrl") >= 0) m |= Qt.ControlModifier
+      if (keys[name] === undefined) return "unknown key"
+      root.handleKeyCode(keys[name], m)
+      return root.cursorId
+    }
+    function cursor(): string { return root.cursorId }
+    function toplevels(): string {
+      var out = []
+      try { var list = Hyprland.toplevels.values; for (var i = 0; i < list.length; i++) out.push(String(list[i].address) + ":" + (list[i].wayland ? "wl" : "-")) } catch (e) { return "error " + e }
+      return JSON.stringify(out)
+    }
     function debug(): string {
       var live = Model.liveAddresses(root.clientsJson, root.workspaceId)
       return JSON.stringify({ workspace: root.workspaceId, layout: root.workspaceLayout, clientsBytes: root.clientsJson.length,
@@ -441,7 +494,7 @@ Item {
               model: root.rects
               delegate: Rectangle {
                 required property var modelData
-                readonly property bool hovered: root.hoverId === modelData.id
+                readonly property bool hovered: root.cursorId === modelData.id
                 readonly property bool isWin: modelData.isWindow
                 readonly property bool picked: root.pickedIds[modelData.id] === true
                 readonly property bool shown: modelData.inViewport && modelData.visible
@@ -456,6 +509,30 @@ Item {
                 border.color: (picked || modelData.viewport || hovered) ? root.accent : (shown ? Color.menu.border : root.faint)
                 opacity: shown ? 1.0 : 0.45
 
+                // Live thumbnail of the window, under the labels
+                ScreencopyView {
+                  id: thumb
+                  visible: parent.isWin && captureSource !== null && hasContent && parent.width > Style.space(48) && parent.height > Style.space(32)
+                  anchors.fill: parent
+                  anchors.margins: Style.space(3)
+                  captureSource: parent.isWin ? root.toplevelFor(modelData.address) : null
+                  live: root.opened && parent.isWin
+                  paintCursor: false
+                  opacity: modelData.visible ? 0.85 : 0.4
+                }
+
+                // Label backdrop so text stays readable over a thumbnail
+                Rectangle {
+                  visible: thumb.visible
+                  anchors.centerIn: parent
+                  width: Math.min(parent.width - Style.space(8), Math.max(nameLabel.implicitWidth, titleLabel.visible ? titleLabel.implicitWidth : 0) + Style.space(16))
+                  height: nameLabel.implicitHeight + (titleLabel.visible ? titleLabel.implicitHeight + Style.space(6) : 0) + Style.space(10)
+                  radius: Style.space(5)
+                  color: Qt.rgba(root.background.r, root.background.g, root.background.b, 0.94)
+                  border.width: 1
+                  border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.12)
+                }
+
                 // Container tag, top-left inside the pad
                 Text {
                   visible: !parent.isWin && parent.width > Style.space(40) && parent.height > Style.space(16)
@@ -467,8 +544,10 @@ Item {
 
                 // Window label
                 Text {
+                  id: nameLabel
                   visible: parent.isWin && parent.width > Style.space(14) && parent.height > Style.space(10)
                   anchors.centerIn: parent
+                  anchors.verticalCenterOffset: titleLabel.visible ? -Style.space(7) : 0
                   width: parent.width - Style.space(6)
                   horizontalAlignment: Text.AlignHCenter
                   elide: Text.ElideRight
@@ -478,8 +557,9 @@ Item {
                 }
 
                 Text {
+                  id: titleLabel
                   visible: parent.isWin && modelData.title !== "" && modelData.title !== modelData.name && parent.width > Style.space(90) && parent.height > Style.space(44)
-                  anchors { horizontalCenter: parent.horizontalCenter; top: parent.verticalCenter; topMargin: Style.space(10) }
+                  anchors { horizontalCenter: parent.horizontalCenter; top: parent.verticalCenter; topMargin: Style.space(6) }
                   width: parent.width - Style.space(12)
                   horizontalAlignment: Text.AlignHCenter
                   elide: Text.ElideMiddle
@@ -575,7 +655,7 @@ Item {
           text: root.notice !== "" ? root.notice
             : root.selectedCount > 0
               ? (root.selectedCount + " selected  ·  click adds or removes tiles  ·  ⏎ or Show: view only these  ·  Esc: clear")
-              : "click: zoom there  ·  shift-click or drag: select tiles to show together  ·  right-click: zoom to its parent  ·  ↑ ↓ zoom out / in  ·  ← → back / forward  ·  Home: overview  ·  1–9: framings  ·  Esc: close"
+              : "click / ⏎: zoom there  ·  arrows: move  ·  space, shift-click or drag: select tiles to show together  ·  right-click: parent  ·  ⌫: hide  ·  shift+↑↓: zoom out / in  ·  shift+←→: back / forward  ·  Home: overview  ·  1–9: framings  ·  T: thumbnails  ·  Esc"
           color: root.dim
           font { family: root.fontFamily; pixelSize: Style.space(11) }
         }

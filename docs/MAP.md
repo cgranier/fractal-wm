@@ -38,23 +38,24 @@ o.bind("SUPER + CTRL + Y", "Fractal map", "omarchy-shell shell toggle cgranier.f
 
 ## Use
 
+Each tile shows a live thumbnail of its window (press T to toggle them) with the app name and title on top.
+
 | Input | Effect |
 |---|---|
-| click a window or container | zoom the viewport there, close the map |
-| shift-click, or drag a rectangle | select tiles; the Show button or ⏎ shows exactly those, from whatever branches |
+| click a window or container, or ⏎ on the cursor | zoom the viewport there, close the map |
+| arrows | move the cursor from tile to tile (the pointer moves it too) |
+| space, shift-click, or drag a rectangle | select tiles; the Show button or ⏎ shows exactly those, from whatever branches |
 | click while a selection exists | add or remove that tile |
 | right-click | zoom to its parent |
-| Backspace / Delete | hide the hovered tile from the current view |
+| ⌫ / Delete | hide the cursor tile from the current view |
 | Ctrl+A | select every tile |
-| "show all" chip | clear the workspace's selection |
 | breadcrumb chip | zoom to that ancestor |
-| ⌖ chip | jump to a saved framing |
-| ↑ / ↓ | zoom out / in (map stays open and follows) |
-| ← / → | back / forward through viewports |
+| ⌖ chip | jump to a saved framing; "show all" chip clears the workspace's selection |
+| shift+↑ / shift+↓, − / = | zoom out / in (the map stays open and follows) |
+| shift+← / shift+→ | back / forward through views |
 | Home | overview |
 | 1–9 | saved framing 1–9 |
-| Esc | clear the selection, then close |
-| click outside | close |
+| Esc | clear the selection, then close; click outside closes |
 
 `omarchy-shell shell toggle cgranier.fractalmap '{"workspace": 3}'` opens the map for another workspace.
 

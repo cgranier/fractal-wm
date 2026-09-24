@@ -200,3 +200,29 @@ function windowsUnder(rects, id) {
 function normalise(box) {
   return { x: Math.min(box.x, box.x + box.w), y: Math.min(box.y, box.y + box.h), w: Math.abs(box.w), h: Math.abs(box.h) }
 }
+
+// Keyboard cursor: the nearest window tile in a direction from `fromId`.
+// Prefers tiles that overlap the current one on the perpendicular axis, then
+// the closest by edge distance; falls back to anything in that direction.
+function neighbor(rects, fromId, dir) {
+  var from = null
+  for (var i = 0; i < rects.length; i++) if (rects[i].id === fromId) from = rects[i]
+  var windows = rects.filter(function(r) { return r.isWindow })
+  if (!from) return windows.length ? windows[0].id : null
+  var fx = from.x + from.w / 2, fy = from.y + from.h / 2
+  var best = null, bestScore = Infinity
+  for (var j = 0; j < windows.length; j++) {
+    var r = windows[j]
+    if (r.id === from.id) continue
+    var cx = r.x + r.w / 2, cy = r.y + r.h / 2
+    var primary, perp, overlap
+    if (dir === "left")       { primary = from.x - (r.x + r.w); perp = Math.abs(cy - fy); overlap = r.y < from.y + from.h && r.y + r.h > from.y }
+    else if (dir === "right") { primary = r.x - (from.x + from.w); perp = Math.abs(cy - fy); overlap = r.y < from.y + from.h && r.y + r.h > from.y }
+    else if (dir === "up")    { primary = from.y - (r.y + r.h); perp = Math.abs(cx - fx); overlap = r.x < from.x + from.w && r.x + r.w > from.x }
+    else                      { primary = r.y - (from.y + from.h); perp = Math.abs(cx - fx); overlap = r.x < from.x + from.w && r.x + r.w > from.x }
+    if (primary < -1) continue                          // not in that direction
+    var score = Math.max(0, primary) + (overlap ? 0 : 100000) + perp * 0.5
+    if (score < bestScore) { bestScore = score; best = r }
+  }
+  return best ? best.id : null
+}

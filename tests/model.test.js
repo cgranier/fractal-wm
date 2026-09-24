@@ -7,7 +7,7 @@ const vm = require("node:vm")
 // Model.js is a QML JS library (.pragma library); evaluate it in a sandbox.
 const src = fs.readFileSync(path.join(__dirname, "..", "Model.js"), "utf8").replace(/^\.pragma library\s*$/m, "")
 const ctx = {}
-vm.runInNewContext(src + "\nthis.M = { parseStatus, flatten, parentId, nodeById, fitBox, label, fontFor, firstWindow, prune, liveAddresses, hit, windowsIn, windowsUnder, normalise }", ctx)
+vm.runInNewContext(src + "\nthis.M = { parseStatus, flatten, parentId, nodeById, fitBox, label, fontFor, firstWindow, prune, liveAddresses, hit, windowsIn, windowsUnder, normalise, neighbor }", ctx)
 const M = ctx.M
 const fixture = fs.readFileSync(path.join(__dirname, "fixture.json"), "utf8")
 
@@ -132,4 +132,19 @@ test("visible flag comes from the status, defaulting to true", () => {
   const by = Object.fromEntries(rects.map(r => [r.id, r]))
   assert.equal(by.w1.visible, false)
   assert.equal(by.w2.visible, true)
+})
+
+test("neighbor walks the tiles like a cursor", () => {
+  const s = M.parseStatus(fixture)
+  const rects = M.flatten(s, { x: 0, y: 0, w: 1000, h: 600 }, { pad: 0, gap: 0 })
+  // w1 | (w2 / (w3 | tabs(w4, w5)))  with tabs laid out as a row
+  assert.equal(M.neighbor(rects, "w1", "right"), "w2")       // overlaps vertically, top wins on distance tie? both at x=500
+  assert.equal(M.neighbor(rects, "w2", "down"), "w4")       // the tile under w2 centre
+  assert.equal(M.neighbor(rects, "w3", "right"), "w4")
+  assert.equal(M.neighbor(rects, "w4", "right"), "w5")
+  assert.equal(M.neighbor(rects, "w5", "left"), "w4")
+  assert.equal(M.neighbor(rects, "w5", "up"), "w2")
+  assert.equal(M.neighbor(rects, "w3", "left"), "w1")
+  assert.equal(M.neighbor(rects, "w1", "left"), null)
+  assert.equal(M.neighbor(rects, "nope", "left"), "w1")     // no cursor yet: first window
 })
