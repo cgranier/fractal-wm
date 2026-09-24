@@ -291,7 +291,9 @@ function T.sync(tree, live, area)
     if not present[leaf.address] then detach(tree, leaf) end
   end
   for _, entry in ipairs(live) do
-    if not T.find_window(tree, entry.address) then T.add_window(tree, entry.address, entry.label, area) end
+    local leaf = T.find_window(tree, entry.address)
+    if not leaf then leaf = T.add_window(tree, entry.address, entry.label, area) end
+    if entry.title ~= nil then leaf.title = entry.title end
   end
 end
 
@@ -643,6 +645,7 @@ local function json_node(n, tree, f, names)
     '"focused":' .. tostring(n == f),
   }
   if n.address then parts[#parts + 1] = '"address":' .. json_str(n.address) end
+  if n.title then parts[#parts + 1] = '"title":' .. json_str(n.title) end
   if names[n.id] then parts[#parts + 1] = '"framing":' .. json_str(names[n.id]) end
   if is_container(n) then
     if n.kind == "tabs" then parts[#parts + 1] = '"active":' .. tostring(n.active) end

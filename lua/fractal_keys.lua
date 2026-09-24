@@ -15,7 +15,7 @@
 --   SUPER + CTRL + 1..9                 jump to saved framing 1..9
 --   SUPER + CTRL + SHIFT + 1..9         save the current view as framing 1..9
 --   SUPER + CTRL + U                    toggle the fractal layout on this workspace
---   SUPER + CTRL + Y                    show the tree as a notification
+--   SUPER + CTRL + Y                    Fractal Map overlay (Omarchy) / tree as a notification
 --   3-finger pinch (hyprgrass)          zoom out (pinch in) / zoom in (pinch out)
 
 local fractal = require("hypr.fractal").setup({
@@ -64,7 +64,13 @@ for i = 1, 9 do
 end
 
 bind("SUPER + CTRL + U", "Fractal: toggle layout on workspace", "fractal toggle")
-bind("SUPER + CTRL + Y", "Fractal: show tree", "fractal show")
+-- With the Omarchy shell, SUPER + CTRL + Y opens the Fractal Map overlay (cgranier.fractalmap);
+-- elsewhere it shows the tree as a notification.
+if o and o.bind then
+  bind("SUPER + CTRL + Y", "Fractal: map", "omarchy-shell shell toggle cgranier.fractalmap '{}'")
+else
+  bind("SUPER + CTRL + Y", "Fractal: show tree", "fractal show")
+end
 
 if hl.plugin.hyprgrass then
   local hg = hl.plugin.hyprgrass

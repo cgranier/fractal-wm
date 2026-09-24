@@ -97,7 +97,7 @@ local function live_windows(ctx)
     if w and w.address then
       local label = w.class
       if not label or label == "" then label = w.title end
-      out[#out + 1] = { address = w.address, label = label or "" }
+      out[#out + 1] = { address = w.address, label = label or "", title = w.title or "" }
     end
   end
   return out

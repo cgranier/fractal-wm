@@ -90,10 +90,17 @@ dwindle. Uninstall: remove the `require` line, the three links and the copied fi
 | Super+Ctrl+G, Super+Ctrl+Alt+G | next / previous tab |
 | Super+Ctrl+Equal / Minus | grow / shrink |
 | Super+Ctrl+U | toggle the layout on this workspace |
-| Super+Ctrl+Y | show the tree as a notification |
+| Super+Ctrl+Y | Fractal Map overlay (Omarchy shell), else the tree as a notification |
 | three-finger pinch (hyprgrass) | zoom out / in |
 
 The chord is Super+Ctrl because Omarchy uses Super+Alt for window groups. Change what you like in your copy.
+
+## Fractal Map (Omarchy shell plugin)
+
+[omarchy-fractal-map](https://github.com/cgranier/omarchy-fractal-map) draws the tree as a clickable map: click a window
+or a container to zoom the viewport there, right-click for its parent, breadcrumb and saved framings on top. Install
+with `omarchy plugin add https://github.com/cgranier/omarchy-fractal-map.git --enable`; the default bindings open it on
+Super+Ctrl+Y when the Omarchy shell is present. It reads the JSON status this layout writes, so it needs nothing else.
 
 ## How it works
 
