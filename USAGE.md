@@ -19,6 +19,13 @@ keeps the Lua API keeps this working.
 State: `~/.local/state/fractal-wm/` (`ws-<id>.lua` per workspace, `enabled.txt`, `fractal.log`);
 live status: `$XDG_RUNTIME_DIR/fractal-wm/ws-<id>.txt|.json`, `last-reply.txt`.
 
+## Notifications
+
+Replies to commands (the viewport path after a zoom, "split column", ...) are written to
+`$XDG_RUNTIME_DIR/fractal-wm/last-reply.txt` and printed by the `fractal` CLI. They are **not** shown as desktop
+notifications unless you pass `notify = true` to `setup()` in your `fractal_keys.lua`. `fractal show`
+(Super+Ctrl+Y) always uses a notification, on demand.
+
 ## Turning it on
 
 ```

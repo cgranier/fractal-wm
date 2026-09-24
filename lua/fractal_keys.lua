@@ -21,7 +21,7 @@
 local fractal = require("hypr.fractal").setup({
   name = "fractal",   -- workspaces use it as layout = "lua:fractal"
   desktop = false,    -- Omarchy has no desktop icons; `fractal desktop on` adds the wallpaper leaf
-  notify = true,      -- one-line replies pop up as notifications
+  notify = false,     -- true: one-line replies (viewport path etc.) pop up as notifications
 })
 
 local function cmd(msg) return hl.dsp.layout(msg) end
