@@ -1,0 +1,10 @@
+{"viewport":"c0","path":[{"id":"root","name":"row"},{"id":"c0","name":"column"}],"framings":[{"name":"1","id":"c0"}],"canBack":true,"canForward":false,"workspace":9,
+ "tree":{"id":"root","kind":"row","name":"row","weight":1,"viewport":false,"focused":false,"children":[
+   {"id":"w1","kind":"window","name":"Alacritty","weight":1,"viewport":false,"focused":false,"address":"0x1"},
+   {"id":"c0","kind":"column","name":"column","weight":1,"viewport":true,"focused":false,"framing":"1","children":[
+     {"id":"w2","kind":"window","name":"chromium","weight":1,"viewport":false,"focused":true,"address":"0x2"},
+     {"id":"r1","kind":"row","name":"row","weight":1,"viewport":false,"focused":false,"children":[
+       {"id":"w3","kind":"window","name":"nautilus","weight":1,"viewport":false,"focused":false,"address":"0x3"},
+       {"id":"t1","kind":"tabs","name":"tabs","weight":3,"viewport":false,"focused":false,"active":2,"children":[
+         {"id":"w4","kind":"window","name":"nvim","weight":1,"viewport":false,"focused":false,"address":"0x4"},
+         {"id":"w5","kind":"window","name":"btop","weight":1,"viewport":false,"focused":false,"address":"0x5"}]}]}]}]}}

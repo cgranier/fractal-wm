@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "cgranier.fractalmap",
+  "name": "Fractal Map",
+  "version": "0.1.0",
+  "author": "Carlos Granier",
+  "license": "MIT",
+  "description": "A clickable map of the fractal-wm window tree for the current workspace: click a window or a container to zoom the viewport there, jump through the breadcrumb or to a saved framing.",
+  "kinds": [
+    "overlay"
+  ],
+  "entryPoints": {
+    "overlay": "Map.qml"
+  }
+}

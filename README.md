@@ -38,9 +38,23 @@ Omarchy shell widget. See [USAGE.md](USAGE.md) for the full command list and kno
 
 ## Install (manual, for now)
 
+On Omarchy, let the plugin manager fetch the repository, which also enables the map overlay:
+
+```bash
+omarchy plugin add https://github.com/cgranier/fractal-wm.git --enable
+cd ~/.config/omarchy/plugins/cgranier.fractalmap
+```
+
+Anywhere else, clone it:
+
 ```bash
 git clone https://github.com/cgranier/fractal-wm.git ~/fractal-wm
 cd ~/fractal-wm
+```
+
+Then, from that directory:
+
+```bash
 
 # 1. the engine: two Lua modules the Hyprland config can require
 ln -s "$PWD/lua/fractal.lua"       ~/.config/hypr/fractal.lua
@@ -97,10 +111,9 @@ The chord is Super+Ctrl because Omarchy uses Super+Alt for window groups. Change
 
 ## Fractal Map (Omarchy shell plugin)
 
-[omarchy-fractal-map](https://github.com/cgranier/omarchy-fractal-map) draws the tree as a clickable map: click a window
-or a container to zoom the viewport there, right-click for its parent, breadcrumb and saved framings on top. Install
-with `omarchy plugin add https://github.com/cgranier/omarchy-fractal-map.git --enable`; the default bindings open it on
-Super+Ctrl+Y when the Omarchy shell is present. It reads the JSON status this layout writes, so it needs nothing else.
+The repository doubles as an Omarchy shell plugin, `cgranier.fractalmap`: a clickable map of the tree. Click a window
+or a container to zoom the viewport there, right-click for its parent, breadcrumb and saved framings on top. The
+default bindings open it on Super+Ctrl+Y when the Omarchy shell is present. Details: [docs/MAP.md](docs/MAP.md).
 
 ## How it works
 
@@ -116,7 +129,8 @@ same path. State is saved per workspace under `$XDG_STATE_HOME/fractal-wm` and a
 ## Development
 
 ```bash
-lua tests/test_tree.lua && TMPDIR=/tmp lua tests/test_glue.lua   # 29 tests, no Hyprland needed
+lua tests/test_tree.lua && TMPDIR=/tmp lua tests/test_glue.lua   # layout engine, no Hyprland needed
+node --test tests/model.test.js                                   # map overlay model
 hyprctl reload && hyprctl configerrors                            # live: the module hot-swaps behind one registration
 fractal log                                                       # engine errors, if any
 ```
