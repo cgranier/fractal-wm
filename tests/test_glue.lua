@@ -154,9 +154,6 @@ test("zooming schedules a focus change when focus leaves the view", function()
   eq(calls.dispatch[#calls.dispatch], "focus:address:0xc")
 end)
 
-print(string.format("%d passed, %d failed", passed, failed))
-os.exit(failed == 0 and 0 or 1)
-
 test("a zoom survives focus briefly snapping back to the old window", function()
   local ctx = ctx_for({ A, B, C })
   active_window = A
@@ -178,3 +175,6 @@ test("a zoom survives focus briefly snapping back to the old window", function()
   provider.recalculate(ctx)
   eq(tree.viewport, tree.root, "after the grace period a real focus change reveals the window")
 end)
+
+print(string.format("%d passed, %d failed", passed, failed))
+os.exit(failed == 0 and 0 or 1)
